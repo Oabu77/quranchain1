@@ -18,14 +18,17 @@ pkill -f darcloud || true
 sleep 2
 
 echo "[2/6] Relaunching Fungi Mesh node…"
-( command -v python3 >/dev/null && \
+if command -v python3 >/dev/null; then
   python3 fungi_mesh_node.py \
     --node-name "$(hostname)" \
     --auto-discover \
     --mesh-mode full \
     --transport wifi,bluetooth,tcp \
     --heartbeat 5 \
-    --log-level INFO ) >/tmp/fungi_mesh.log 2>&1 &
+    --log-level INFO >/tmp/fungi_mesh.log 2>&1 &
+else
+  echo "Warning: python3 not found, skipping Fungi Mesh node launch"
+fi
 
 sleep 3
 
