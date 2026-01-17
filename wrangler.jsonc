@@ -1,16 +1,26 @@
+// <docs-tag name="workflows-wrangler.json">
+//$schema: "node_modules/wrangler/config-schema.json"
 {
-	"compatibility_date": "2025-10-08",
+	"name": "workflows-starter",
 	"main": "src/index.ts",
-	"name": "quranchain1",
-	"upload_source_maps": true,
+	"compatibility_date": "2024-10-22",
+
 	"observability": {
-		"enabled": true
+		"enabled": true,
+		"head_sampling_rate": 1
 	},
-	"d1_databases": [
+
+	// <docs-tag name="workflows-binding-wrangler.json">
+	"workflows": [
 		{
-			"binding": "DB",
-			"database_name": "openapi-template-db",
-			"database_id": "26b921d0-3226-485d-a105-dc820a9abdbc"
+			// name of your workflow
+			"name": "workflows-starter",
+			// binding name env.MYWORKFLOW
+			"binding": "MY_WORKFLOW",
+			// this is class that extends the Workflow class in src/index.ts
+			"class_name": "MyWorkflow"
 		}
 	]
+	// </docs-tag name="workflows-binding-wrangler.json">
 }
+// </docs-tag name="workflows-wrangler.json">
