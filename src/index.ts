@@ -3,6 +3,8 @@ import { Hono } from "hono";
 import { tasksRouter } from "./endpoints/tasks/router";
 import { ContentfulStatusCode } from "hono/utils/http-status";
 import { DummyEndpoint } from "./endpoints/dummyEndpoint";
+import { ServiceProxyEndpoint } from "./endpoints/serviceProxy";
+import { TunnelEndpoint } from "./endpoints/tunnel";
 
 // Start a Hono app
 const app = new Hono<{ Bindings: Env }>();
@@ -45,6 +47,12 @@ openapi.route("/tasks", tasksRouter);
 
 // Register other endpoints
 openapi.post("/dummy/:slug", DummyEndpoint);
+
+// Register service proxy endpoint
+openapi.all("/service/:path", ServiceProxyEndpoint);
+
+// Register tunnel endpoint
+openapi.all("/tunnel/:path", TunnelEndpoint);
 
 // Export the Hono app
 export default app;

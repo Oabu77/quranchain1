@@ -12,5 +12,14 @@
 			"database_name": "openapi-template-db",
 			"database_id": "26b921d0-3226-485d-a105-dc820a9abdbc"
 		}
-	]
+	],
+	"services": [
+		{
+			"binding": "MAIN_SERVICE",
+			"service": "main-service-worker"
+		}
+	],
+	"vars": {
+		"TUNNEL_URL": "https://tunnel.example.com"
+	}
 }
