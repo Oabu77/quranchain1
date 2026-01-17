@@ -7,6 +7,8 @@ declare namespace Cloudflare {
 	}
 	interface Env {
 		DB: D1Database;
+		MAIN_SERVICE: Fetcher;
+		TUNNEL_URL: string;
 	}
 }
 interface Env extends Cloudflare.Env {}

@@ -54,6 +54,35 @@ A live public deployment of this template is available at [https://openapi-templ
    npx wrangler tail
    ```
 
+## Service Connections
+
+This project includes support for connecting to external services through two mechanisms:
+
+### Main Service Connection
+The worker can connect to other Cloudflare Workers via service bindings. Configure the `MAIN_SERVICE` binding in `wrangler.jsonc`:
+
+```jsonc
+"services": [
+  {
+    "binding": "MAIN_SERVICE",
+    "service": "your-service-worker-name"
+  }
+]
+```
+
+Access the main service via the `/service/:path` endpoint which proxies requests to the bound service.
+
+### Tunnel Connection
+The worker can connect to external services via HTTP tunnels. Configure the `TUNNEL_URL` environment variable in `wrangler.jsonc`:
+
+```jsonc
+"vars": {
+  "TUNNEL_URL": "https://your-tunnel-url.com"
+}
+```
+
+Access the tunnel service via the `/tunnel/:path` endpoint which forwards requests to the configured tunnel URL.
+
 ## Testing
 
 This template includes integration tests using [Vitest](https://vitest.dev/). To run the tests locally:
