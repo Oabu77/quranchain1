@@ -7,6 +7,6 @@ export class EcosystemList extends D1ListEndpoint<HandleArgs> {
 		model: EcosystemModel,
 	};
 
-	searchFields = ["name", "slug", "description", "category"];
+	searchFields = ["name", "slug", "description", "category", "status"];
 	defaultOrderBy = "id DESC";
 }

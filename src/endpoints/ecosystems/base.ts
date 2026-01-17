@@ -5,8 +5,14 @@ export const ecosystem = z.object({
 	name: z.string(),
 	slug: z.string(),
 	description: z.string(),
-	category: z.string(),
-	status: z.string(),
+	category: z.enum([
+		"validator",
+		"node",
+		"application",
+		"community",
+		"infrastructure",
+	]),
+	status: z.enum(["active", "inactive", "pending"]),
 	created_at: z.string().datetime(),
 });
 
