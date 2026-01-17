@@ -54,6 +54,26 @@ A live public deployment of this template is available at [https://openapi-templ
    npx wrangler tail
    ```
 
+## Automated Deployment
+
+This project includes a GitHub Actions workflow that automatically deploys to Cloudflare Workers when changes are pushed to the `main` branch.
+
+### Setup GitHub Secrets
+
+To enable automated deployment, configure the following secrets in your GitHub repository (Settings → Secrets and variables → Actions):
+
+1. `CLOUDFLARE_API_TOKEN`: Your Cloudflare API token with Workers deployment permissions
+2. `CLOUDFLARE_ACCOUNT_ID`: Your Cloudflare Account ID
+
+### Workflow
+
+The deployment workflow (`.github/workflows/deploy.yml`):
+- Triggers on pushes to the `main` branch
+- Can also be manually triggered via the Actions tab
+- Automatically installs dependencies
+- Applies database migrations to production
+- Deploys the worker to Cloudflare
+
 ## Testing
 
 This template includes integration tests using [Vitest](https://vitest.dev/). To run the tests locally:
