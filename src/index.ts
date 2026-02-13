@@ -14,7 +14,12 @@ import { securityHeaders, requestId, requestSizeLimit } from "./middleware/secur
 import { logError, logInfo } from "./utils/logger";
 
 // Start a Hono app
-const app = new Hono<{ Bindings: Env }>();
+const app = new Hono<{ 
+	Bindings: Env;
+	Variables: {
+		requestId: string;
+	};
+}>();
 
 // Global middleware
 app.use("*", requestId);
@@ -32,7 +37,7 @@ app.onError((err, c) => {
 
 	// Structured JSON logging for production monitoring
 	logError("Global error handler caught", err, {
-		requestId: c.get("requestId"),
+		requestId: c.get("requestId") as string,
 		path: c.req.path,
 		method: c.req.method,
 	});

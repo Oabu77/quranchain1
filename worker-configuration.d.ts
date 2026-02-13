@@ -7,6 +7,12 @@ declare namespace Cloudflare {
 	}
 	interface Env {
 		DB: D1Database;
+		// Optional environment configuration
+		ENVIRONMENT?: string;
+		VERSION?: string;
+		FOUNDER_ADDRESS?: string;
+		MAX_REQUEST_SIZE?: string;
+		ENABLE_AUDIT_LOGGING?: string;
 	}
 }
 interface Env extends Cloudflare.Env {}

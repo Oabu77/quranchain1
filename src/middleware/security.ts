@@ -44,6 +44,9 @@ c.header("Permissions-Policy", "geolocation=(), microphone=(), camera=()");
 /**
  * CORS middleware
  * Configurable CORS policy for API access
+ * 
+ * SECURITY NOTE: Default is restrictive (null origin = reject all)
+ * Override with specific origins for legitimate cross-origin use cases
  */
 export function cors(options?: {
 origin?: string | string[];
@@ -51,11 +54,12 @@ methods?: string[];
 allowedHeaders?: string[];
 credentials?: boolean;
 }) {
-const defaultOrigin = "*";
+// SECURITY: Restrictive default - reject cross-origin requests unless explicitly configured
+const defaultOrigin = "null"; // Reject all origins by default
 const defaultMethods = ["GET", "POST", "PUT", "DELETE", "OPTIONS"];
 const defaultHeaders = ["Content-Type", "Authorization"];
 
-return async (c: Context, next: Next): Promise<void> => {
+return async (c: Context, next: Next): Promise<Response | void> => {
 const origin = options?.origin || defaultOrigin;
 const methods = options?.methods || defaultMethods;
 const headers = options?.allowedHeaders || defaultHeaders;
@@ -88,7 +92,7 @@ await next();
  * Prevents excessive payload attacks
  */
 export function requestSizeLimit(maxSizeBytes: number = 1024 * 1024) {
-return async (c: Context, next: Next): Promise<void> => {
+return async (c: Context, next: Next): Promise<Response | void> => {
 const contentLength = c.req.header("content-length");
 
 if (contentLength && parseInt(contentLength) > maxSizeBytes) {

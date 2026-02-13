@@ -20,18 +20,20 @@ metadata?: Record<string, unknown>;
 
 /**
  * Verify Founder signature (placeholder for cryptographic verification)
- * In production, this would verify a cryptographic signature
+ * In production, this would verify a cryptographic signature using Web Crypto API
+ * 
+ * @TODO CRITICAL: Implement actual cryptographic signature verification
+ * Timeline: Required before production deployment
+ * Implementation: Use Web Crypto API with ECDSA or EdDSA signatures
  */
 export function verifyFounderSignature(
 action: string,
 signature: string,
 founderPublicKey: string,
 ): boolean {
-// TODO: Implement actual cryptographic signature verification
-// This is a placeholder that always returns false for safety
-// Real implementation would use Web Crypto API or similar
-
-console.warn("Founder signature verification not implemented - failing safe");
+// SECURITY: Placeholder implementation - always fails safe
+// This prevents unauthorized operations until proper crypto is implemented
+console.warn("CRITICAL TODO: Founder signature verification not implemented - failing safe");
 return false;
 }
 
