@@ -1,0 +1,45 @@
+# ==========================================================
+# QuranChain™ / Dar Al-Nas™ Proprietary System
+# Founder: Omar Mohammad Abunadi
+# All Rights Reserved. Trademark Protected.
+# ==========================================================
+
+version: '3.8'
+
+services:
+  quranchain-dev:
+    build:
+      context: .
+      target: development
+    container_name: quranchain-dev
+    ports:
+      - "8787:8787"
+    volumes:
+      - .:/app
+      - /app/node_modules
+    environment:
+      - ENVIRONMENT=development
+      - LOG_LEVEL=DEBUG
+    command: npm run dev
+    restart: unless-stopped
+    networks:
+      - quranchain-network
+
+  quranchain-test:
+    build:
+      context: .
+      target: builder
+    container_name: quranchain-test
+    volumes:
+      - .:/app
+      - /app/node_modules
+    command: npm run test
+    networks:
+      - quranchain-network
+
+networks:
+  quranchain-network:
+    driver: bridge
+
+volumes:
+  node_modules:
