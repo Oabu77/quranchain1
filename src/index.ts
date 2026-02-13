@@ -9,9 +9,17 @@ import { Hono } from "hono";
 import { tasksRouter } from "./endpoints/tasks/router";
 import { ContentfulStatusCode } from "hono/utils/http-status";
 import { DummyEndpoint } from "./endpoints/dummyEndpoint";
+import { HealthEndpoint, ReadinessEndpoint } from "./endpoints/health";
+import { securityHeaders, requestId, requestSizeLimit } from "./middleware/security";
+import { logError, logInfo } from "./utils/logger";
 
 // Start a Hono app
 const app = new Hono<{ Bindings: Env }>();
+
+// Global middleware
+app.use("*", requestId);
+app.use("*", securityHeaders);
+app.use("*", requestSizeLimit(2 * 1024 * 1024)); // 2MB limit
 
 app.onError((err, c) => {
 	if (err instanceof ApiException) {
@@ -23,13 +31,11 @@ app.onError((err, c) => {
 	}
 
 	// Structured JSON logging for production monitoring
-	console.error(JSON.stringify({
-		timestamp: new Date().toISOString(),
-		level: "ERROR",
-		message: "Global error handler caught",
-		error: err.message,
-		stack: err.stack,
-	}));
+	logError("Global error handler caught", err, {
+		requestId: c.get("requestId"),
+		path: c.req.path,
+		method: c.req.method,
+	});
 
 	// For other errors, return a generic 500 response
 	return c.json(
@@ -53,11 +59,18 @@ const openapi = fromHono(app, {
 	},
 });
 
+// System endpoints
+openapi.get("/health", HealthEndpoint);
+openapi.get("/ready", ReadinessEndpoint);
+
 // Register Tasks Sub router
 openapi.route("/tasks", tasksRouter);
 
 // Register other endpoints
 openapi.post("/dummy/:slug", DummyEndpoint);
+
+// Log startup
+logInfo("QuranChain™ Worker initialized", { version: "1.0.0" });
 
 // Export the Hono app
 export default app;
