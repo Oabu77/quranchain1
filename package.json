@@ -1,19 +1,24 @@
 {
 	"name": "quranchain1",
-	"description": "Complete backend API template using Hono + Chanfana + D1 + Vitest.",
+	"description": "QuranChain™ Blockchain Platform - Sovereign-grade blockchain infrastructure for the Dar Al-Nas™ ecosystem",
+	"version": "1.0.0",
+	"author": "Omar Mohammad Abunadi",
+	"license": "PROPRIETARY",
 	"cloudflare": {
-		"label": "Backend OpenAPI Template",
+		"label": "QuranChain™ Blockchain API",
 		"products": [
 			"Workers",
 			"D1"
 		],
 		"categories": [
-			"storage"
+			"blockchain",
+			"storage",
+			"security"
 		],
-		"docs_url": "https://chanfana.com",
+		"docs_url": "https://github.com/Oabu77/quranchain1",
 		"preview_icon_url": "https://imagedelivery.net/wSMYJvS3Xw-n339CbDyDIA/1b2805d9-e7fb-4576-5176-6b409e251800/public",
 		"preview_image_url": "https://imagedelivery.net/wSMYJvS3Xw-n339CbDyDIA/cbde46cf-20fa-4548-7f70-1ae8c2f48900/preview",
-		"publish": true
+		"publish": false
 	},
 	"dependencies": {
 		"chanfana": "2.8.3",

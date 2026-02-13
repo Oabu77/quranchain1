@@ -1,3 +1,9 @@
+// ==========================================================
+// QuranChain™ / Dar Al-Nas™ Proprietary System
+// Founder: Omar Mohammad Abunadi
+// All Rights Reserved. Trademark Protected.
+// ==========================================================
+
 import { ApiException, fromHono } from "chanfana";
 import { Hono } from "hono";
 import { tasksRouter } from "./endpoints/tasks/router";
@@ -16,7 +22,14 @@ app.onError((err, c) => {
 		);
 	}
 
-	console.error("Global error handler caught:", err); // Log the error if it's not known
+	// Structured JSON logging for production monitoring
+	console.error(JSON.stringify({
+		timestamp: new Date().toISOString(),
+		level: "ERROR",
+		message: "Global error handler caught",
+		error: err.message,
+		stack: err.stack,
+	}));
 
 	// For other errors, return a generic 500 response
 	return c.json(
@@ -33,9 +46,9 @@ const openapi = fromHono(app, {
 	docs_url: "/",
 	schema: {
 		info: {
-			title: "My Awesome API",
-			version: "2.0.0",
-			description: "This is the documentation for my awesome API.",
+			title: "QuranChain™ Blockchain API",
+			version: "1.0.0",
+			description: "QuranChain™ blockchain infrastructure API - A sovereign-grade blockchain platform for the Dar Al-Nas™ ecosystem.",
 		},
 	},
 });

@@ -1,3 +1,9 @@
+// ==========================================================
+// QuranChain™ / Dar Al-Nas™ Proprietary System
+// Founder: Omar Mohammad Abunadi
+// All Rights Reserved. Trademark Protected.
+// ==========================================================
+
 import { z } from "zod";
 
 export const task = z.object({
