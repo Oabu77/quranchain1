@@ -1,0 +1,39 @@
+# Git
+.git
+.gitignore
+
+# Dependencies
+node_modules
+npm-debug.log
+
+# Environment
+.env
+.env.*
+.dev.vars
+.dev.vars.*
+
+# Build outputs
+dist
+.wrangler
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Documentation
+*.md
+!README.md
+
+# CI/CD
+.github
+
+# Temporary files
+tmp
+temp
+*.tmp

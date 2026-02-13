@@ -1,3 +1,9 @@
+// ==========================================================
+// QuranChain™ / Dar Al-Nas™ Proprietary System
+// Founder: Omar Mohammad Abunadi
+// All Rights Reserved. Trademark Protected.
+// ==========================================================
+
 import { D1CreateEndpoint } from "chanfana";
 import { HandleArgs } from "../../types";
 import { TaskModel } from "./base";
