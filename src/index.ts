@@ -14,6 +14,8 @@ import {
   SIGNUP_PAGE,
   LOGIN_PAGE,
   ONBOARDING_PAGE,
+  DASHBOARD_PAGE,
+  ADMIN_PAGE,
   checkoutPage,
 } from "./pages";
 
@@ -36,10 +38,12 @@ app.use("*", async (c, next) => {
   c.res.headers.set("Access-Control-Allow-Origin", "*");
 });
 
-// ── HTML Pages (signup, login, checkout, onboarding) ──
+// ── HTML Pages (signup, login, checkout, onboarding, dashboard, admin) ──
 app.get("/signup", (c) => c.html(SIGNUP_PAGE));
 app.get("/login", (c) => c.html(LOGIN_PAGE));
 app.get("/onboarding", (c) => c.html(ONBOARDING_PAGE));
+app.get("/dashboard", (c) => c.html(DASHBOARD_PAGE));
+app.get("/admin", (c) => c.html(ADMIN_PAGE));
 app.get("/checkout/:plan", (c) => c.html(checkoutPage(c.req.param("plan"))));
 
 // ── Auth & Checkout API ──

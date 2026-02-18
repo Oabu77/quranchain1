@@ -2,10 +2,103 @@ import { Hono } from "hono";
 
 const auth = new Hono<{ Bindings: Env }>();
 
+// ── Rate limiter — IP-based in-memory throttle ──
+const loginAttempts = new Map<string, { count: number; resetAt: number }>();
+const RATE_LIMIT_WINDOW = 60_000; // 1 minute
+const RATE_LIMIT_MAX = 5; // 5 attempts per window
+
+function checkRateLimit(ip: string): { allowed: boolean; retryAfter?: number } {
+  const now = Date.now();
+  const entry = loginAttempts.get(ip);
+  if (!entry || now > entry.resetAt) {
+    loginAttempts.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW });
+    return { allowed: true };
+  }
+  if (entry.count >= RATE_LIMIT_MAX) {
+    return { allowed: false, retryAfter: Math.ceil((entry.resetAt - now) / 1000) };
+  }
+  entry.count++;
+  return { allowed: true };
+}
+
+// ── JWT helpers using Web Crypto HMAC-SHA256 ──
+const JWT_SECRET_FALLBACK = "darcloud-jwt-secret-2026-quranchain";
+
+function base64url(data: Uint8Array): string {
+  return btoa(String.fromCharCode(...data))
+    .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function base64urlEncode(str: string): string {
+  return base64url(new TextEncoder().encode(str));
+}
+
+async function signJWT(payload: Record<string, unknown>, secret: string): Promise<string> {
+  const header = { alg: "HS256", typ: "JWT" };
+  const now = Math.floor(Date.now() / 1000);
+  const fullPayload = { ...payload, iat: now, exp: now + 86400 }; // 24h expiry
+  const encodedHeader = base64urlEncode(JSON.stringify(header));
+  const encodedPayload = base64urlEncode(JSON.stringify(fullPayload));
+  const signingInput = `${encodedHeader}.${encodedPayload}`;
+
+  const key = await crypto.subtle.importKey(
+    "raw", new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" }, false, ["sign"]
+  );
+  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(signingInput));
+  return `${signingInput}.${base64url(new Uint8Array(sig))}`;
+}
+
+async function verifyJWT(token: string, secret: string): Promise<Record<string, unknown> | null> {
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) return null;
+    const [header, payload, signature] = parts;
+    const signingInput = `${header}.${payload}`;
+
+    const key = await crypto.subtle.importKey(
+      "raw", new TextEncoder().encode(secret),
+      { name: "HMAC", hash: "SHA-256" }, false, ["verify"]
+    );
+
+    // Decode base64url signature
+    const sigStr = signature.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = sigStr + "=".repeat((4 - sigStr.length % 4) % 4);
+    const sigBytes = Uint8Array.from(atob(padded), c => c.charCodeAt(0));
+
+    const valid = await crypto.subtle.verify("HMAC", key, sigBytes, new TextEncoder().encode(signingInput));
+    if (!valid) return null;
+
+    const payloadStr = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const payloadPad = payloadStr + "=".repeat((4 - payloadStr.length % 4) % 4);
+    const decoded = JSON.parse(atob(payloadPad));
+
+    // Check expiry
+    if (decoded.exp && decoded.exp < Math.floor(Date.now() / 1000)) return null;
+    return decoded;
+  } catch {
+    return null;
+  }
+}
+
+// Auth middleware for protected routes
+async function requireAuth(c: { req: { header: (name: string) => string | undefined }; env: { JWT_SECRET?: string }; json: (data: unknown, status?: number) => Response; set: (key: string, value: unknown) => void }): Promise<Response | null> {
+  const authHeader = c.req.header("Authorization");
+  if (!authHeader?.startsWith("Bearer ")) {
+    return c.json({ error: "Authorization header required (Bearer <token>)" }, 401);
+  }
+  const token = authHeader.substring(7);
+  const secret = c.env.JWT_SECRET || JWT_SECRET_FALLBACK;
+  const payload = await verifyJWT(token, secret);
+  if (!payload) {
+    return c.json({ error: "Invalid or expired token" }, 401);
+  }
+  c.set("user", payload);
+  return null; // Continue
+}
+
 // Auto-migrate: ensure tables exist on first request
-let migrated = false;
 async function ensureTables(db: D1Database) {
-  if (migrated) return;
   await db.batch([
     db.prepare(`CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -38,7 +131,6 @@ async function ensureTables(db: D1Database) {
       created_at TEXT DEFAULT (datetime('now'))
     )`),
   ]);
-  migrated = true;
 }
 
 // Simple password hashing using Web Crypto (SHA-256 + salt)
@@ -71,6 +163,11 @@ async function verifyPassword(
 // POST /api/auth/signup
 auth.post("/auth/signup", async (c) => {
   const start = Date.now();
+  const ip = c.req.header("CF-Connecting-IP") || c.req.header("X-Forwarded-For") || "unknown";
+  const rl = checkRateLimit(`signup:${ip}`);
+  if (!rl.allowed) {
+    return c.json({ error: `Too many attempts. Retry after ${rl.retryAfter}s` }, 429);
+  }
   try {
     const db = c.env.DB;
     await ensureTables(db);
@@ -122,10 +219,15 @@ auth.post("/auth/signup", async (c) => {
       .bind(email.toLowerCase(), name, passwordHash, validPlan)
       .run();
 
+    // Generate JWT token
+    const secret = c.env.JWT_SECRET || JWT_SECRET_FALLBACK;
+    const token = await signJWT({ email: email.toLowerCase(), name, plan: validPlan, role: "user" }, secret);
+
     return c.json({
       success: true,
       message: "Account created successfully",
       user: { email: email.toLowerCase(), name, plan: validPlan },
+      token,
       execution_ms: Date.now() - start,
     });
   } catch (err: unknown) {
@@ -137,6 +239,11 @@ auth.post("/auth/signup", async (c) => {
 // POST /api/auth/login
 auth.post("/auth/login", async (c) => {
   const start = Date.now();
+  const ip = c.req.header("CF-Connecting-IP") || c.req.header("X-Forwarded-For") || "unknown";
+  const rl = checkRateLimit(`login:${ip}`);
+  if (!rl.allowed) {
+    return c.json({ error: `Too many login attempts. Retry after ${rl.retryAfter}s` }, 429);
+  }
   try {
     const db = c.env.DB;
     await ensureTables(db);
@@ -166,10 +273,18 @@ auth.post("/auth/login", async (c) => {
       return c.json({ error: "Invalid email or password" }, 401);
     }
 
+    // Generate JWT token
+    const secret = c.env.JWT_SECRET || JWT_SECRET_FALLBACK;
+    const token = await signJWT(
+      { email: user.email, name: user.name, plan: user.plan, role: "user", userId: user.id },
+      secret
+    );
+
     return c.json({
       success: true,
       message: "Login successful",
       user: { email: user.email, name: user.name, plan: user.plan },
+      token,
       execution_ms: Date.now() - start,
     });
   } catch (err: unknown) {
@@ -330,4 +445,79 @@ auth.post("/hwc/apply", async (c) => {
   }
 });
 
-export { auth };
+// GET /api/auth/me — Get current user from JWT (protected)
+auth.get("/auth/me", async (c) => {
+  const start = Date.now();
+  const authResponse = await requireAuth(c as never);
+  if (authResponse) return authResponse;
+
+  const user = (c as unknown as { var: { user: Record<string, unknown> } }).var;
+  return c.json({
+    success: true,
+    user: (c as unknown as { get: (k: string) => Record<string, unknown> }).get("user"),
+    execution_ms: Date.now() - start,
+  });
+});
+
+// GET /api/admin/stats — Admin dashboard stats (protected)
+auth.get("/admin/stats", async (c) => {
+  const start = Date.now();
+  const authHeader = c.req.header("Authorization");
+  if (!authHeader?.startsWith("Bearer ")) {
+    return c.json({ error: "Authorization required" }, 401);
+  }
+  const secret = c.env.JWT_SECRET || JWT_SECRET_FALLBACK;
+  const payload = await verifyJWT(authHeader.substring(7), secret);
+  if (!payload) return c.json({ error: "Invalid or expired token" }, 401);
+
+  const db = c.env.DB;
+  await ensureTables(db);
+
+  // Core auth tables (always exist)
+  const [users, contacts, hwcApps] = await Promise.all([
+    db.prepare("SELECT COUNT(*) as count FROM users").first<{ count: number }>(),
+    db.prepare("SELECT COUNT(*) as count FROM contact_submissions").first<{ count: number }>(),
+    db.prepare("SELECT COUNT(*) as count FROM hwc_applications").first<{ count: number }>(),
+  ]);
+
+  // Contracts tables (may not exist if contracts module hasn't been hit yet)
+  let companies = { count: 0 }, contractsList = { count: 0 }, filings = { count: 0 }, ipList = { count: 0 };
+  try {
+    const [co, ct, fi, ip] = await Promise.all([
+      db.prepare("SELECT COUNT(*) as count FROM companies").first<{ count: number }>(),
+      db.prepare("SELECT COUNT(*) as count FROM contracts").first<{ count: number }>(),
+      db.prepare("SELECT COUNT(*) as count FROM legal_filings").first<{ count: number }>(),
+      db.prepare("SELECT COUNT(*) as count FROM ip_protections").first<{ count: number }>(),
+    ]);
+    companies = co || { count: 0 };
+    contractsList = ct || { count: 0 };
+    filings = fi || { count: 0 };
+    ipList = ip || { count: 0 };
+  } catch { /* contracts tables not yet initialized */ }
+
+  const recentUsers = await db
+    .prepare("SELECT email, name, plan, created_at FROM users ORDER BY created_at DESC LIMIT 10")
+    .all();
+
+  const planBreakdown = await db
+    .prepare("SELECT plan, COUNT(*) as count FROM users GROUP BY plan")
+    .all();
+
+  return c.json({
+    success: true,
+    stats: {
+      users: users?.count || 0,
+      contact_submissions: contacts?.count || 0,
+      hwc_applications: hwcApps?.count || 0,
+      companies: companies?.count || 0,
+      contracts: contractsList?.count || 0,
+      legal_filings: filings?.count || 0,
+      ip_protections: ipList?.count || 0,
+    },
+    recent_users: recentUsers.results,
+    plan_breakdown: planBreakdown.results,
+    execution_ms: Date.now() - start,
+  });
+});
+
+export { auth, requireAuth, verifyJWT, JWT_SECRET_FALLBACK };

@@ -118,6 +118,7 @@ async function handleSignup(e) {
     if (!res.ok) throw new Error(data.error || 'Signup failed');
     success.textContent = 'Account created! Redirecting...';
     success.style.display = 'block';
+    if (data.token) localStorage.setItem('darcloud_token', data.token);
     const plan = document.getElementById('plan').value;
     if (plan === 'pro') {
       setTimeout(() => window.location.href = '/checkout/pro', 1500);
@@ -180,7 +181,8 @@ async function handleLogin(e) {
     if (!res.ok) throw new Error(data.error || 'Login failed');
     success.textContent = 'Welcome back! Redirecting...';
     success.style.display = 'block';
-    setTimeout(() => window.location.href = '/onboarding', 1500);
+    localStorage.setItem('darcloud_token', data.token);
+    setTimeout(() => window.location.href = '/dashboard', 1500);
   } catch(err) {
     error.textContent = err.message;
     error.style.display = 'block';
@@ -204,7 +206,7 @@ export const ONBOARDING_PAGE = pageShell("Welcome to DarCloud", `
     </div>
     <div style="display:flex;align-items:flex-start;gap:1rem;margin-bottom:1.5rem;padding:1.25rem;background:var(--s2);border:1px solid var(--bdr);border-radius:12px">
       <div style="font-size:1.5rem">2️⃣</div>
-      <div><strong style="color:var(--cyan)">Meet the AI Fleet</strong><br><span style="color:var(--muted);font-size:.9rem">71 specialized AI agents ready to work. Chat with QuranChain AI, deploy bots, or explore the full fleet.</span><br><a href="https://ai.darcloud.host" style="font-size:.85rem;margin-top:.5rem;display:inline-block">Browse AI Agents →</a></div>
+      <div><strong style="color:var(--cyan)">Meet the AI Fleet</strong><br><span style="color:var(--muted);font-size:.9rem">77 specialized AI agents ready to work. Chat with QuranChain AI, deploy bots, or explore the full fleet.</span><br><a href="https://ai.darcloud.host" style="font-size:.85rem;margin-top:.5rem;display:inline-block">Browse AI Agents →</a></div>
     </div>
     <div style="display:flex;align-items:flex-start;gap:1rem;margin-bottom:1.5rem;padding:1.25rem;background:var(--s2);border:1px solid var(--bdr);border-radius:12px">
       <div style="font-size:1.5rem">3️⃣</div>
@@ -320,3 +322,202 @@ async function handleCheckout(e) {
 </script>
 `);
 }
+
+// ── Dashboard Page (post-login) ──
+export const DASHBOARD_PAGE = pageShell("Dashboard", `
+<div class="card" style="max-width:900px">
+  <p class="bismillah">بِسْمِ اللَّهِ الرَّحْمَنِ الرَّحِيمِ</p>
+  <h1>Your <span>DarCloud</span> Dashboard</h1>
+  <p class="sub" id="greeting">Loading your dashboard...</p>
+  <div class="error" id="error" style="display:none"></div>
+
+  <div id="dashContent" style="display:none">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:1rem;margin:2rem 0">
+      <div style="background:var(--s2);border:1px solid var(--bdr);border-radius:12px;padding:1.25rem;text-align:center">
+        <div style="font-size:1.8rem;font-weight:800;background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent" id="planName">—</div>
+        <div style="color:var(--muted);font-size:.8rem;margin-top:.25rem">Current Plan</div>
+      </div>
+      <div style="background:var(--s2);border:1px solid var(--bdr);border-radius:12px;padding:1.25rem;text-align:center">
+        <div style="font-size:1.8rem;font-weight:800;background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent">77</div>
+        <div style="color:var(--muted);font-size:.8rem;margin-top:.25rem">AI Agents</div>
+      </div>
+      <div style="background:var(--s2);border:1px solid var(--bdr);border-radius:12px;padding:1.25rem;text-align:center">
+        <div style="font-size:1.8rem;font-weight:800;background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent" id="healthStatus">—</div>
+        <div style="color:var(--muted);font-size:.8rem;margin-top:.25rem">System Health</div>
+      </div>
+      <div style="background:var(--s2);border:1px solid var(--bdr);border-radius:12px;padding:1.25rem;text-align:center">
+        <div style="font-size:1.8rem;font-weight:800;background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent" id="dbTables">—</div>
+        <div style="color:var(--muted);font-size:.8rem;margin-top:.25rem">D1 Tables</div>
+      </div>
+    </div>
+
+    <h2 style="font-size:1.2rem;margin:2rem 0 1rem;color:var(--cyan)">Quick Actions</h2>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1rem;margin-bottom:2rem">
+      <a href="/docs" style="text-decoration:none;display:flex;align-items:flex-start;gap:.75rem;padding:1rem;background:var(--s2);border:1px solid var(--bdr);border-radius:10px">
+        <div style="font-size:1.3rem">📚</div>
+        <div><strong style="color:var(--txt)">API Docs</strong><br><span style="color:var(--muted);font-size:.8rem">Interactive OpenAPI explorer</span></div>
+      </a>
+      <a href="https://ai.darcloud.host" style="text-decoration:none;display:flex;align-items:flex-start;gap:.75rem;padding:1rem;background:var(--s2);border:1px solid var(--bdr);border-radius:10px">
+        <div style="font-size:1.3rem">🤖</div>
+        <div><strong style="color:var(--txt)">AI Fleet</strong><br><span style="color:var(--muted);font-size:.8rem">77 agents at your service</span></div>
+      </a>
+      <a href="https://mesh.darcloud.host" style="text-decoration:none;display:flex;align-items:flex-start;gap:.75rem;padding:1rem;background:var(--s2);border:1px solid var(--bdr);border-radius:10px">
+        <div style="font-size:1.3rem">🌐</div>
+        <div><strong style="color:var(--txt)">FungiMesh</strong><br><span style="color:var(--muted);font-size:.8rem">Encrypted mesh network</span></div>
+      </a>
+      <a href="https://blockchain.darcloud.host" style="text-decoration:none;display:flex;align-items:flex-start;gap:.75rem;padding:1rem;background:var(--s2);border:1px solid var(--bdr);border-radius:10px">
+        <div style="font-size:1.3rem">⛓️</div>
+        <div><strong style="color:var(--txt)">Blockchain</strong><br><span style="color:var(--muted);font-size:.8rem">QuranChain explorer</span></div>
+      </a>
+      <a href="https://halalwealthclub.darcloud.host" style="text-decoration:none;display:flex;align-items:flex-start;gap:.75rem;padding:1rem;background:var(--s2);border:1px solid var(--bdr);border-radius:10px">
+        <div style="font-size:1.3rem">💰</div>
+        <div><strong style="color:var(--txt)">Halal Wealth Club</strong><br><span style="color:var(--muted);font-size:.8rem">Zero-riba banking</span></div>
+      </a>
+      <a href="/checkout/pro" style="text-decoration:none;display:flex;align-items:flex-start;gap:.75rem;padding:1rem;background:var(--s2);border:1px solid var(--bdr);border-radius:10px">
+        <div style="font-size:1.3rem">⚡</div>
+        <div><strong style="color:var(--txt)">Upgrade Plan</strong><br><span style="color:var(--muted);font-size:.8rem">Unlock full features</span></div>
+      </a>
+    </div>
+
+    <div style="display:flex;gap:1rem;flex-wrap:wrap">
+      <a href="/admin" class="btn btn-outline" style="text-decoration:none;flex:1;min-width:140px">Admin Panel</a>
+      <button onclick="logout()" class="btn btn-outline" style="flex:1;min-width:140px;color:var(--err);border-color:var(--err)">Sign Out</button>
+    </div>
+  </div>
+</div>
+<script>
+(async function() {
+  const token = localStorage.getItem('darcloud_token');
+  if (!token) { window.location.href = '/login'; return; }
+  try {
+    const [meRes, healthRes] = await Promise.all([
+      fetch('/api/auth/me', { headers: { Authorization: 'Bearer ' + token } }),
+      fetch('/health')
+    ]);
+    if (!meRes.ok) { localStorage.removeItem('darcloud_token'); window.location.href = '/login'; return; }
+    const me = await meRes.json();
+    const health = await healthRes.json();
+    document.getElementById('greeting').textContent = 'As-salamu alaykum, ' + me.user.name + '!';
+    document.getElementById('planName').textContent = (me.user.plan || 'starter').charAt(0).toUpperCase() + (me.user.plan || 'starter').slice(1);
+    document.getElementById('healthStatus').textContent = health.status === 'healthy' ? '✅' : '⚠️';
+    document.getElementById('dbTables').textContent = health.components?.database?.tables || '—';
+    document.getElementById('dashContent').style.display = 'block';
+  } catch(e) {
+    document.getElementById('error').textContent = 'Failed to load dashboard: ' + e.message;
+    document.getElementById('error').style.display = 'block';
+  }
+})();
+function logout() { localStorage.removeItem('darcloud_token'); window.location.href = '/login'; }
+</script>
+`);
+
+// ── Admin Panel Page ──
+export const ADMIN_PAGE = pageShell("Admin Panel", `
+<div class="card" style="max-width:1000px">
+  <p class="bismillah">بِسْمِ اللَّهِ الرَّحْمَنِ الرَّحِيمِ</p>
+  <h1><span>DarCloud</span> Admin Panel</h1>
+  <p class="sub">System overview and management</p>
+  <div class="error" id="error" style="display:none"></div>
+
+  <div id="adminContent" style="display:none">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:.75rem;margin:2rem 0">
+      <div style="background:var(--s2);border:1px solid var(--bdr);border-radius:10px;padding:1rem;text-align:center">
+        <div style="font-size:1.6rem;font-weight:800;color:var(--cyan)" id="s-users">—</div>
+        <div style="color:var(--muted);font-size:.75rem">Users</div>
+      </div>
+      <div style="background:var(--s2);border:1px solid var(--bdr);border-radius:10px;padding:1rem;text-align:center">
+        <div style="font-size:1.6rem;font-weight:800;color:var(--cyan)" id="s-companies">—</div>
+        <div style="color:var(--muted);font-size:.75rem">Companies</div>
+      </div>
+      <div style="background:var(--s2);border:1px solid var(--bdr);border-radius:10px;padding:1rem;text-align:center">
+        <div style="font-size:1.6rem;font-weight:800;color:var(--cyan)" id="s-contracts">—</div>
+        <div style="color:var(--muted);font-size:.75rem">Contracts</div>
+      </div>
+      <div style="background:var(--s2);border:1px solid var(--bdr);border-radius:10px;padding:1rem;text-align:center">
+        <div style="font-size:1.6rem;font-weight:800;color:var(--cyan)" id="s-filings">—</div>
+        <div style="color:var(--muted);font-size:.75rem">Legal Filings</div>
+      </div>
+      <div style="background:var(--s2);border:1px solid var(--bdr);border-radius:10px;padding:1rem;text-align:center">
+        <div style="font-size:1.6rem;font-weight:800;color:var(--cyan)" id="s-ip">—</div>
+        <div style="color:var(--muted);font-size:.75rem">IP Protections</div>
+      </div>
+      <div style="background:var(--s2);border:1px solid var(--bdr);border-radius:10px;padding:1rem;text-align:center">
+        <div style="font-size:1.6rem;font-weight:800;color:var(--cyan)" id="s-contacts">—</div>
+        <div style="color:var(--muted);font-size:.75rem">Contact Msgs</div>
+      </div>
+      <div style="background:var(--s2);border:1px solid var(--bdr);border-radius:10px;padding:1rem;text-align:center">
+        <div style="font-size:1.6rem;font-weight:800;color:var(--cyan)" id="s-hwc">—</div>
+        <div style="color:var(--muted);font-size:.75rem">HWC Apps</div>
+      </div>
+    </div>
+
+    <h2 style="font-size:1.1rem;margin:2rem 0 1rem;color:var(--cyan)">Plan Breakdown</h2>
+    <div id="planBreakdown" style="margin-bottom:2rem"></div>
+
+    <h2 style="font-size:1.1rem;margin:2rem 0 1rem;color:var(--cyan)">Recent Users</h2>
+    <div style="overflow-x:auto">
+      <table style="width:100%;border-collapse:collapse;font-size:.85rem" id="usersTable">
+        <thead><tr style="border-bottom:1px solid var(--bdr)">
+          <th style="text-align:left;padding:.5rem;color:var(--muted)">Email</th>
+          <th style="text-align:left;padding:.5rem;color:var(--muted)">Name</th>
+          <th style="text-align:left;padding:.5rem;color:var(--muted)">Plan</th>
+          <th style="text-align:left;padding:.5rem;color:var(--muted)">Joined</th>
+        </tr></thead>
+        <tbody id="usersBody"></tbody>
+      </table>
+    </div>
+
+    <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-top:2rem">
+      <a href="/dashboard" class="btn btn-outline" style="text-decoration:none;flex:1;min-width:140px">← Dashboard</a>
+      <button onclick="seedAll()" class="btn btn-primary" style="flex:1;min-width:140px" id="seedBtn">Bootstrap Ecosystem</button>
+    </div>
+  </div>
+</div>
+<script>
+(async function() {
+  const token = localStorage.getItem('darcloud_token');
+  if (!token) { window.location.href = '/login'; return; }
+  try {
+    const res = await fetch('/api/admin/stats', { headers: { Authorization: 'Bearer ' + token } });
+    if (!res.ok) { if (res.status === 401) { localStorage.removeItem('darcloud_token'); window.location.href = '/login'; } return; }
+    const d = await res.json();
+    const s = d.stats;
+    document.getElementById('s-users').textContent = s.users;
+    document.getElementById('s-companies').textContent = s.companies;
+    document.getElementById('s-contracts').textContent = s.contracts;
+    document.getElementById('s-filings').textContent = s.legal_filings;
+    document.getElementById('s-ip').textContent = s.ip_protections;
+    document.getElementById('s-contacts').textContent = s.contact_submissions;
+    document.getElementById('s-hwc').textContent = s.hwc_applications;
+    const pb = document.getElementById('planBreakdown');
+    pb.innerHTML = (d.plan_breakdown || []).map(p =>
+      '<span style="display:inline-block;background:var(--s2);border:1px solid var(--bdr);border-radius:6px;padding:.4rem .8rem;margin:.25rem;font-size:.85rem">' +
+      '<strong style="color:var(--cyan)">' + p.plan + '</strong>: ' + p.count + '</span>'
+    ).join('');
+    const tb = document.getElementById('usersBody');
+    tb.innerHTML = (d.recent_users || []).map(u =>
+      '<tr style="border-bottom:1px solid var(--bdr)">' +
+      '<td style="padding:.5rem">' + u.email + '</td>' +
+      '<td style="padding:.5rem">' + u.name + '</td>' +
+      '<td style="padding:.5rem"><span style="background:rgba(0,212,255,.1);color:var(--cyan);padding:.15rem .5rem;border-radius:4px;font-size:.8rem">' + u.plan + '</span></td>' +
+      '<td style="padding:.5rem;color:var(--muted)">' + (u.created_at || '').substring(0,10) + '</td></tr>'
+    ).join('');
+    document.getElementById('adminContent').style.display = 'block';
+  } catch(e) {
+    document.getElementById('error').textContent = 'Failed to load: ' + e.message;
+    document.getElementById('error').style.display = 'block';
+  }
+})();
+async function seedAll() {
+  const btn = document.getElementById('seedBtn');
+  const token = localStorage.getItem('darcloud_token');
+  btn.textContent = 'Bootstrapping...'; btn.disabled = true;
+  try {
+    const res = await fetch('/api/contracts/bootstrap', { method: 'POST', headers: { Authorization: 'Bearer ' + token } });
+    const d = await res.json();
+    btn.textContent = 'Done! Reloading...';
+    setTimeout(() => window.location.reload(), 1500);
+  } catch(e) { btn.textContent = 'Failed: ' + e.message; }
+}
+</script>
+`);

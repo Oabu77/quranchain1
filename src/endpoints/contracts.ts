@@ -14,9 +14,7 @@ import { ALL_LEGAL_FILINGS } from "../data/legal-filings";
 const contracts = new Hono<{ Bindings: Env }>();
 
 // ── Auto-migrate ──
-let migrated = false;
 async function ensureTables(db: D1Database) {
-  if (migrated) return;
   await db.batch([
     db.prepare(`CREATE TABLE IF NOT EXISTS companies (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -88,9 +86,10 @@ async function ensureTables(db: D1Database) {
   ]);
   // Add sector column if missing (upgrade from v5.2.0)
   try { await db.prepare("ALTER TABLE companies ADD COLUMN sector TEXT DEFAULT 'general'").run(); } catch { /* already exists */ }
-  // Rename ordar-law → darlaw
+  // Rename ordar-law → darlaw (companies + contracts + clients)
   try { await db.prepare("UPDATE companies SET company_id='darlaw', name='DarLaw™', legal_name='DarLaw Legal Intelligence LLC' WHERE company_id='ordar-law'").run(); } catch { /* done */ }
-  migrated = true;
+  try { await db.prepare("UPDATE contracts SET provider_company_id='darlaw' WHERE provider_company_id='ordar-law'").run(); } catch { /* done */ }
+  try { await db.prepare("UPDATE contracts SET client_company_id='darlaw' WHERE client_company_id='ordar-law'").run(); } catch { /* done */ }
 }
 
 function genId(prefix: string): string {

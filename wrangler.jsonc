@@ -6,6 +6,9 @@
 	"observability": {
 		"enabled": true
 	},
+	"vars": {
+		"JWT_SECRET": "darcloud-jwt-secret-2026-quranchain"
+	},
 	"d1_databases": [
 		{
 			"binding": "DB",
