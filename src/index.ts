@@ -45,7 +45,7 @@ app.get("/checkout/:plan", (c) => c.html(checkoutPage(c.req.param("plan"))));
 // ── Auth & Checkout API ──
 app.route("/api", auth);
 
-// ── Inter-Company Contracts, OrDar Law, & IP Protection ──
+// ── Inter-Company Contracts, DarLaw, & IP Protection ──
 app.route("/api/contracts", contracts);
 
 app.onError((err, c) => {
@@ -73,7 +73,7 @@ const openapi = fromHono(app, {
   schema: {
     info: {
       title: "QuranChain™ — DarCloud API",
-      version: "5.2.0",
+      version: "5.3.0",
       description:
         "QuranChain™ production API powering the DarCloud infrastructure stack. " +
         "All endpoints produce real-world results from live upstream services — nothing is mocked. " +
@@ -83,9 +83,11 @@ const openapi = fromHono(app, {
         "backup registry with mesh replication, and operational task management. " +
         "Authentication: /signup, /login, /checkout/:plan, /onboarding. " +
         "Payments: Stripe Checkout integration at /api/checkout/session. " +
-        "Inter-Company Contracts: 12 companies, 46+ contracts, monthly autopay on all. " +
-        "OrDar Law AI™: 7 legal AI agents handling corporate filings, IP protection, " +
-        "patents, trademarks, copyrights, and international property across 153 countries. " +
+        "Inter-Company Contracts: 101 companies, 120+ contracts ($200K+/mo), monthly autopay on all. " +
+        "DarLaw AI™: 11 legal AI agents handling corporate filings, IP protection, " +
+        "75 trademarks, 27 patents, 8 copyrights, 6 trade secrets, international IP across 153 countries. " +
+        "Islamic Finance: Takaful, Sukuk, Murabaha, Musharakah, Mudarabah, Ijarah, Istisna, Wakala, Zakat, Waqf. " +
+        "Blockchain/DeFi: DarDeFi, DarNFT, DarStaking, DarSwap, DarBridge, DarDAO, DarWallet. " +
         "Built on Cloudflare Workers + D1 + Hono + chanfana OpenAPI.",
     },
   },
