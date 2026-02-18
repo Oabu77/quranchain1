@@ -87,7 +87,7 @@ footer{padding:2rem;border-top:1px solid var(--bdr);text-align:center;position:r
   <p>FungiMesh: modeled after mycelium networks in nature. 340,000 nodes spanning 6 continents. Self-healing, quantum-encrypted, zero single point of failure. The backbone of DarCloud.</p>
   <div class="hero-btns">
     <a class="btn btn-mesh" href="/api/status">Live Network Status</a>
-    <a class="btn btn-outline" href="/api/nodes">Node Map</a>
+    <a class="btn btn-outline" href="/api/nodes">View Nodes</a>
   </div>
   <div class="mesh-visual">
     <div class="mesh-ring"></div>

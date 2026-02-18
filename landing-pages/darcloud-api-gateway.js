@@ -1,6 +1,3 @@
---683b825ef05ba7de9da685bc52503e642fcf0ab69cb8584fcc4312de3b52
-Content-Disposition: form-data; name="index.js"
-
 // src/index.js
 var ROUTES = {
   // Core APIs
@@ -116,6 +113,3 @@ function jsonResponse(data, status = 200) {
 export {
   src_default as default
 };
-//# sourceMappingURL=index.js.map
-
---683b825ef05ba7de9da685bc52503e642fcf0ab69cb8584fcc4312de3b52--

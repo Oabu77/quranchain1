@@ -8,7 +8,7 @@ var LANDING = `<!DOCTYPE html>
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>DarCloud \u2014 Quantum-Secured Mesh Cloud Platform</title>
-<meta name="description" content="DarCloud: Islamic-principled blockchain ecosystem. 340K mesh nodes, 71 AI agents, quantum encryption, 47 blockchain networks.">
+<meta name="description" content="DarCloud: Islamic-principled blockchain ecosystem. 340K mesh nodes, 66 AI agents, quantum encryption, 47 blockchain networks.">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>\u2601\uFE0F</text></svg>">
 <style>
 :root{--bg:#07090f;--s1:#0d1117;--s2:#161b22;--bdr:#21262d;--cyan:#00d4ff;--emerald:#10b981;--gold:#f59e0b;--purple:#8b5cf6;--txt:#e6edf3;--muted:#8b949e;--grad1:linear-gradient(135deg,#00d4ff,#10b981);--grad2:linear-gradient(135deg,#8b5cf6,#00d4ff)}
@@ -112,7 +112,7 @@ footer{padding:3rem 2rem;border-top:1px solid var(--bdr);text-align:center}
   <div class="hero-badge"><span class="dot"></span> All Systems Operational \u2014 47 Chains Live</div>
   <p class="bismillah">\u0628\u0650\u0633\u0652\u0645\u0650 \u0627\u0644\u0644\u064E\u0651\u0647\u0650 \u0627\u0644\u0631\u064E\u0651\u062D\u0652\u0645\u064E\u0646\u0650 \u0627\u0644\u0631\u064E\u0651\u062D\u0650\u064A\u0645\u0650</p>
   <h1>The Future of <span>Islamic Cloud</span> Infrastructure</h1>
-  <p>Quantum-secured mesh cloud platform. 340,000 nodes. 71 AI agents. 47 blockchain networks. 100% Shariah-compliant. Zero riba.</p>
+  <p>Quantum-secured mesh cloud platform. 340,000 nodes. 66 AI agents. 47 blockchain networks. 100% Shariah-compliant. Zero riba.</p>
   <div class="hero-btns">
     <a class="btn btn-primary" href="https://darcloud.host/signup">Create Account</a>
     <a class="btn btn-outline" href="https://api.darcloud.host/api">Explore API</a>
@@ -122,7 +122,7 @@ footer{padding:3rem 2rem;border-top:1px solid var(--bdr);text-align:center}
 <div class="container">
   <div class="stats">
     <div class="stat"><div class="stat-value">340K</div><div class="stat-label">Mesh Nodes</div></div>
-    <div class="stat"><div class="stat-value">71</div><div class="stat-label">AI Agents</div></div>
+    <div class="stat"><div class="stat-value">66</div><div class="stat-label">AI Agents</div></div>
     <div class="stat"><div class="stat-value">47</div><div class="stat-label">Blockchains</div></div>
     <div class="stat"><div class="stat-value">90+</div><div class="stat-label">Microservices</div></div>
     <div class="stat"><div class="stat-value">31</div><div class="stat-label">USA Markets</div></div>
@@ -152,7 +152,7 @@ footer{padding:3rem 2rem;border-top:1px solid var(--bdr);text-align:center}
       <div class="card">
         <div class="card-icon">\u{1F916}</div>
         <h3>AI Agent Workforce</h3>
-        <p>71 specialized AI agents: Omar AI\u2122 & QuranChain AI\u2122 validators, revenue bots, real estate agents, marketing bots.</p>
+        <p>66 specialized AI agents: Omar AI\u2122 & QuranChain AI\u2122 validators, revenue bots, real estate agents, marketing bots.</p>
         <a class="card-link" href="https://ai.darcloud.host">Meet the Agents \u2192</a>
       </div>
       <div class="card">
@@ -233,13 +233,232 @@ footer{padding:3rem 2rem;border-top:1px solid var(--bdr);text-align:center}
 </footer>
 
 </body></html>`;
+var LOGIN_PAGE = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sign In \u2014 DarCloud</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>\u2601\uFE0F</text></svg>">
+<style>
+:root{--bg:#07090f;--s1:#0d1117;--s2:#161b22;--bdr:#21262d;--cyan:#00d4ff;--emerald:#10b981;--txt:#e6edf3;--muted:#8b949e;--grad1:linear-gradient(135deg,#00d4ff,#10b981)}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--txt);min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center}
+body::before{content:'';position:fixed;inset:0;background:radial-gradient(circle at 50% 30%,rgba(0,212,255,.06) 0%,transparent 60%);pointer-events:none}
+a{color:var(--cyan);text-decoration:none}a:hover{text-decoration:underline}
+.auth-container{width:100%;max-width:420px;padding:2rem;position:relative;z-index:1}
+.auth-header{text-align:center;margin-bottom:2.5rem}
+.logo{font-size:1.6rem;font-weight:700;background:var(--grad1);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:.5rem}
+.auth-header p{color:var(--muted);font-size:.95rem}
+.auth-card{background:var(--s1);border:1px solid var(--bdr);border-radius:14px;padding:2rem}
+.form-group{margin-bottom:1.25rem}
+.form-group label{display:block;font-size:.85rem;color:var(--txt);margin-bottom:.4rem;font-weight:500}
+.form-group input{width:100%;padding:.75rem 1rem;background:var(--s2);border:1px solid var(--bdr);border-radius:8px;color:var(--txt);font-size:.9rem;font-family:inherit;transition:border-color .2s}
+.form-group input:focus{outline:none;border-color:var(--cyan)}
+.btn{display:block;width:100%;padding:.75rem;border-radius:8px;font-weight:600;font-size:.95rem;border:none;cursor:pointer;transition:all .3s;text-align:center}
+.btn-primary{background:var(--grad1);color:#000}
+.btn-primary:hover{opacity:.85}
+.btn-primary:disabled{opacity:.5;cursor:not-allowed}
+.auth-footer{text-align:center;margin-top:1.5rem;font-size:.85rem;color:var(--muted)}
+#error,#success{display:none;margin-top:1rem;padding:.75rem;border-radius:8px;font-size:.85rem;text-align:center}
+#error{background:rgba(239,68,68,.1);color:#ef4444;border:1px solid rgba(239,68,68,.2)}
+#success{background:rgba(16,185,129,.1);color:#10b981;border:1px solid rgba(16,185,129,.2)}
+</style>
+</head>
+<body>
+<div class="auth-container">
+  <div class="auth-header">
+    <div class="logo">\u2601\uFE0F DarCloud</div>
+    <p>Sign in to your account</p>
+  </div>
+  <div class="auth-card">
+    <form id="loginForm" onsubmit="return handleLogin(event)">
+      <div class="form-group">
+        <label for="email">Email Address</label>
+        <input type="email" id="email" name="email" required placeholder="you@example.com" autocomplete="email">
+      </div>
+      <div class="form-group">
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" required placeholder="Enter your password" autocomplete="current-password">
+      </div>
+      <button type="submit" class="btn btn-primary" id="submitBtn">Sign In</button>
+    </form>
+    <div id="error"></div>
+    <div id="success"></div>
+  </div>
+  <div class="auth-footer">
+    Don&apos;t have an account? <a href="/signup">Create one</a><br>
+    <a href="/" style="margin-top:.5rem;display:inline-block">\u2190 Back to DarCloud</a>
+  </div>
+</div>
+<script>
+async function handleLogin(e){
+  e.preventDefault();
+  var btn=document.getElementById('submitBtn'),err=document.getElementById('error'),ok=document.getElementById('success');
+  err.style.display='none';ok.style.display='none';
+  btn.textContent='Signing in...';btn.disabled=true;
+  try{
+    var res=await fetch('https://darcloud.host/api/auth/login',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({email:document.getElementById('email').value,password:document.getElementById('password').value})
+    });
+    var data=await res.json();
+    if(!res.ok) throw new Error(data.error||'Invalid credentials');
+    if(data.token) localStorage.setItem('darcloud_token',data.token);
+    ok.textContent='Login successful! Redirecting...';ok.style.display='block';
+    setTimeout(function(){window.location.href='/';},1500);
+  }catch(ex){
+    err.textContent=ex.message||'Login failed. Please try again.';err.style.display='block';
+  }
+  btn.textContent='Sign In';btn.disabled=false;
+  return false;
+}
+</script>
+</body></html>`;
+
+var SIGNUP_PAGE = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Create Account \u2014 DarCloud</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>\u2601\uFE0F</text></svg>">
+<style>
+:root{--bg:#07090f;--s1:#0d1117;--s2:#161b22;--bdr:#21262d;--cyan:#00d4ff;--emerald:#10b981;--txt:#e6edf3;--muted:#8b949e;--grad1:linear-gradient(135deg,#00d4ff,#10b981)}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--txt);min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center}
+body::before{content:'';position:fixed;inset:0;background:radial-gradient(circle at 50% 30%,rgba(0,212,255,.06) 0%,transparent 60%);pointer-events:none}
+a{color:var(--cyan);text-decoration:none}a:hover{text-decoration:underline}
+.auth-container{width:100%;max-width:420px;padding:2rem;position:relative;z-index:1}
+.auth-header{text-align:center;margin-bottom:2.5rem}
+.logo{font-size:1.6rem;font-weight:700;background:var(--grad1);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:.5rem}
+.auth-header p{color:var(--muted);font-size:.95rem}
+.plan-badge{display:inline-block;background:rgba(0,212,255,.1);color:var(--cyan);border:1px solid rgba(0,212,255,.2);padding:.3rem .8rem;border-radius:99px;font-size:.8rem;font-weight:600;margin-top:.5rem}
+.auth-card{background:var(--s1);border:1px solid var(--bdr);border-radius:14px;padding:2rem}
+.form-group{margin-bottom:1.25rem}
+.form-group label{display:block;font-size:.85rem;color:var(--txt);margin-bottom:.4rem;font-weight:500}
+.form-group input{width:100%;padding:.75rem 1rem;background:var(--s2);border:1px solid var(--bdr);border-radius:8px;color:var(--txt);font-size:.9rem;font-family:inherit;transition:border-color .2s}
+.form-group input:focus{outline:none;border-color:var(--cyan)}
+.btn{display:block;width:100%;padding:.75rem;border-radius:8px;font-weight:600;font-size:.95rem;border:none;cursor:pointer;transition:all .3s;text-align:center}
+.btn-primary{background:var(--grad1);color:#000}
+.btn-primary:hover{opacity:.85}
+.btn-primary:disabled{opacity:.5;cursor:not-allowed}
+.auth-footer{text-align:center;margin-top:1.5rem;font-size:.85rem;color:var(--muted)}
+#error,#success{display:none;margin-top:1rem;padding:.75rem;border-radius:8px;font-size:.85rem;text-align:center}
+#error{background:rgba(239,68,68,.1);color:#ef4444;border:1px solid rgba(239,68,68,.2)}
+#success{background:rgba(16,185,129,.1);color:#10b981;border:1px solid rgba(16,185,129,.2)}
+</style>
+</head>
+<body>
+<div class="auth-container">
+  <div class="auth-header">
+    <div class="logo">\u2601\uFE0F DarCloud</div>
+    <p>Create your account</p>
+    <div id="planBadge"></div>
+  </div>
+  <div class="auth-card">
+    <form id="signupForm" onsubmit="return handleSignup(event)">
+      <div class="form-group">
+        <label for="name">Full Name</label>
+        <input type="text" id="name" name="name" required placeholder="Your full name" autocomplete="name">
+      </div>
+      <div class="form-group">
+        <label for="email">Email Address</label>
+        <input type="email" id="email" name="email" required placeholder="you@example.com" autocomplete="email">
+      </div>
+      <div class="form-group">
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" required placeholder="Create a strong password" minlength="8" autocomplete="new-password">
+      </div>
+      <button type="submit" class="btn btn-primary" id="submitBtn">Create Account</button>
+    </form>
+    <div id="error"></div>
+    <div id="success"></div>
+  </div>
+  <div class="auth-footer">
+    Already have an account? <a href="/login">Sign in</a><br>
+    <a href="/" style="margin-top:.5rem;display:inline-block">\u2190 Back to DarCloud</a>
+  </div>
+</div>
+<script>
+(function(){
+  var params=new URLSearchParams(window.location.search);
+  var plan=params.get('plan');
+  if(plan){
+    var badge=document.getElementById('planBadge');
+    badge.innerHTML='<span class="plan-badge">Plan: '+plan.charAt(0).toUpperCase()+plan.slice(1)+'</span>';
+  }
+})();
+async function handleSignup(e){
+  e.preventDefault();
+  var btn=document.getElementById('submitBtn'),err=document.getElementById('error'),ok=document.getElementById('success');
+  err.style.display='none';ok.style.display='none';
+  btn.textContent='Creating account...';btn.disabled=true;
+  try{
+    var params=new URLSearchParams(window.location.search);
+    var res=await fetch('https://darcloud.host/api/auth/signup',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({name:document.getElementById('name').value,email:document.getElementById('email').value,password:document.getElementById('password').value,plan:params.get('plan')||'starter'})
+    });
+    var data=await res.json();
+    if(!res.ok) throw new Error(data.error||'Registration failed');
+    if(data.token) localStorage.setItem('darcloud_token',data.token);
+    ok.textContent='Account created! Redirecting...';ok.style.display='block';
+    setTimeout(function(){window.location.href='/';},1500);
+  }catch(ex){
+    err.textContent=ex.message||'Registration failed. Please try again.';err.style.display='block';
+  }
+  btn.textContent='Create Account';btn.disabled=false;
+  return false;
+}
+</script>
+</body></html>`;
+
+function jsonRes(data, status = 200) {
+  return new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json", ...CORS } });
+}
+
 var src_default = {
   async fetch(request) {
     const url = new URL(request.url);
     if (request.method === "OPTIONS")
       return new Response(null, { status: 204, headers: CORS });
     if (url.pathname === "/health")
-      return new Response(JSON.stringify({ service: "darcloud-www", status: "live" }), { headers: { "Content-Type": "application/json", ...CORS } });
+      return jsonRes({ service: "darcloud-www", status: "live" });
+
+    // Auth pages
+    if (url.pathname === "/login")
+      return html(LOGIN_PAGE);
+    if (url.pathname === "/signup")
+      return html(SIGNUP_PAGE);
+
+    // Checkout redirects
+    if (url.pathname === "/checkout/startup" || url.pathname === "/checkout/pro")
+      return Response.redirect("https://enterprise.darcloud.host#pricing", 302);
+
+    // API: Contact form
+    if (url.pathname === "/api/contact" && request.method === "POST") {
+      try {
+        const body = await request.json();
+        const { name, email, company, message } = body;
+        if (!name || !email || !message) return jsonRes({ error: "name, email, and message are required" }, 400);
+        return jsonRes({ success: true, message: "Thank you! Our team will contact you within 24 hours. As-salamu alaykum.", received: { name, email, company: company || "", source: body.source || "website" } });
+      } catch (e) {
+        return jsonRes({ error: "Invalid JSON body" }, 400);
+      }
+    }
+
+    // API: HWC Application
+    if (url.pathname === "/api/hwc/apply" && request.method === "POST") {
+      try {
+        const body = await request.json();
+        const { fullName, email, phone, city, interest } = body;
+        if (!fullName || !email) return jsonRes({ error: "fullName and email are required" }, 400);
+        return jsonRes({ success: true, message: "Application received! We will contact you within 48 hours. As-salamu alaykum.", applicationId: "HWC-" + Date.now(), received: { fullName, email, phone: phone || "", city: city || "", interest: interest || "General", source: body.source || "hwc" } });
+      } catch (e) {
+        return jsonRes({ error: "Invalid JSON body" }, 400);
+      }
+    }
+
+    // Catch-all: landing page
     return html(LANDING);
   }
 };

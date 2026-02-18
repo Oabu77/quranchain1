@@ -85,7 +85,7 @@ footer{padding:2rem;border-top:1px solid var(--bdr);text-align:center}
   <h1>Own Your <span>Dream Home</span> with $5,000 Down</h1>
   <p>Bank-owned properties in 31 major USA Muslim communities. Auto-approved with just $5,000 down payment. Zero riba. Blockchain smart contracts. Halal Wealth Club members only.</p>
   <div class="hero-btns">
-    <a class="btn btn-green" href="https://darcloud.host/signup">Apply Now</a>
+    <a class="btn btn-green" href="https://halalwealthclub.darcloud.host#join">Apply Now</a>
     <a class="btn btn-outline" href="#cities">Browse Markets</a>
   </div>
   <div class="approval-box">

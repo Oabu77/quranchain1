@@ -149,7 +149,7 @@ footer{padding:3rem 2rem;border-top:1px solid var(--bdr);text-align:center}
       <div class="f-icon">\u{1F916}</div>
       <h3>Managed AI Fleet</h3>
       <p>Dedicated AI agent workforce. Custom-trained assistants for your organization \u2014 customer service, sales, compliance, analytics.</p>
-      <span class="f-tag">71 Agents Available</span>
+      <span class="f-tag">66 Agents Available</span>
     </div>
   </div>
 
@@ -199,7 +199,7 @@ footer{padding:3rem 2rem;border-top:1px solid var(--bdr);text-align:center}
         <div class="plan-price">Custom</div>
         <ul>
           <li>Unlimited Infrastructure</li>
-          <li>Full AI Fleet (71 Agents)</li>
+          <li>Full AI Fleet (66 Agents)</li>
           <li>Dedicated Shariah Board</li>
           <li>24/7 Phone + Slack</li>
           <li>99.99% SLA</li>

@@ -110,7 +110,7 @@ footer{padding:3rem 2rem;border-top:1px solid var(--bdr);text-align:center;backg
     <div class="stat"><div class="stat-value">99.9%</div><div class="stat-label">Uptime SLA</div></div>
     <div class="stat"><div class="stat-value">340K</div><div class="stat-label">Global Nodes</div></div>
     <div class="stat"><div class="stat-value">47</div><div class="stat-label">Chains</div></div>
-    <div class="stat"><div class="stat-value">71</div><div class="stat-label">AI Agents</div></div>
+    <div class="stat"><div class="stat-value">66</div><div class="stat-label">AI Agents</div></div>
     <div class="stat"><div class="stat-value">0%</div><div class="stat-label">Interest / Riba</div></div>
   </div>
 </div>
@@ -131,7 +131,7 @@ footer{padding:3rem 2rem;border-top:1px solid var(--bdr);text-align:center;backg
       <div class="card">
         <div class="card-icon cyan">\u{1F916}</div>
         <h3>AI & Machine Learning</h3>
-        <p>71 specialized AI agents ready to deploy. GPT-4o powered assistants for every business need.</p>
+        <p>66 specialized AI agents ready to deploy. GPT-4o powered assistants for every business need.</p>
         <a class="card-link" href="https://ai.darcloud.host">Explore AI \u2192</a>
       </div>
       <div class="card">
