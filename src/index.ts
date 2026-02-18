@@ -7,65 +7,59 @@ import { aiRouter } from "./endpoints/ai/router";
 import { minecraftRouter } from "./endpoints/minecraft/router";
 import { multipassRouter } from "./endpoints/multipass/router";
 import { ContentfulStatusCode } from "hono/utils/http-status";
-import { DummyEndpoint } from "./endpoints/dummyEndpoint";
+import { SystemHealth } from "./endpoints/systemHealth";
 
 // Start a Hono app
 const app = new Hono<{ Bindings: Env }>();
 
 app.onError((err, c) => {
-	if (err instanceof ApiException) {
-		// If it's a Chanfana ApiException, let Chanfana handle the response
-		return c.json(
-			{ success: false, errors: err.buildResponse() },
-			err.status as ContentfulStatusCode,
-		);
-	}
+if (err instanceof ApiException) {
+return c.json(
+{ success: false, errors: err.buildResponse() },
+err.status as ContentfulStatusCode,
+);
+}
 
-	console.error("Global error handler caught:", err); // Log the error if it's not known
+console.error("Unhandled error:", err);
 
-	// For other errors, return a generic 500 response
-	return c.json(
-		{
-			success: false,
-			errors: [{ code: 7000, message: "Internal Server Error" }],
-		},
-		500,
-	);
+return c.json(
+{
+success: false,
+errors: [{ code: 7000, message: "Internal Server Error" }],
+},
+500,
+);
 });
 
 // Setup OpenAPI registry
 const openapi = fromHono(app, {
-	docs_url: "/",
-	schema: {
-		info: {
-			title: "QuranChain™ — DarCloud API",
-			version: "4.0.0",
-			description:
-				"QuranChain™ backend API with FungiMesh connectivity, backup management, Minecraft server tracking, AI fleet benchmark, Multipass VM fleet, and Cloudflare tunnel integration. Serving darcloud.host & darcloud.net.",
-		},
-	},
+docs_url: "/",
+schema: {
+info: {
+title: "QuranChain™ — DarCloud API",
+version: "5.0.0",
+description:
+"QuranChain™ production API powering the DarCloud infrastructure stack. " +
+"All endpoints produce real-world results from live upstream services — nothing is mocked. " +
+"Subsystems: 66 AI agents + 12 GPT-4o assistants (ai.darcloud.host), " +
+"FungiMesh dual-layer encrypted network (mesh.darcloud.host), " +
+"Multipass VM fleet management, Minecraft server tracking (Qcmesh1/Qcmesh2), " +
+"backup registry with mesh replication, and operational task management. " +
+"Built on Cloudflare Workers + D1 + Hono + chanfana OpenAPI.",
+},
+},
 });
 
-// Register Tasks Sub router
+// Register routers
 openapi.route("/tasks", tasksRouter);
-
-// Register Backups Sub router
 openapi.route("/backups", backupsRouter);
-
-// Register FungiMesh Sub router
 openapi.route("/mesh", meshRouter);
-
-// Register AI Workers & Benchmark Sub router
 openapi.route("/ai", aiRouter);
-
-// Register Minecraft Server Management Sub router
 openapi.route("/minecraft", minecraftRouter);
-
-// Register Multipass VM Fleet Sub router
 openapi.route("/multipass", multipassRouter);
 
-// Register other endpoints
-openapi.post("/dummy/:slug", DummyEndpoint);
+// System health check — replaces the old dummy endpoint
+openapi.get("/health", SystemHealth);
 
 // Export the Hono app
 export default app;
