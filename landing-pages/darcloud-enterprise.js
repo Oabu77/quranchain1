@@ -126,7 +126,7 @@ footer{padding:3rem 2rem;border-top:1px solid var(--bdr);text-align:center}
     <div class="f-card">
       <div class="f-icon">\u{1F4B3}</div>
       <h3>Billing & Metering</h3>
-      <p>Usage-based billing with Stripe integration. Custom invoicing, multi-currency support, and automatic zakat calculation on all revenue.</p>
+      <p>Usage-based billing with DarPay\u2122 integration. Custom invoicing, multi-currency support, and automatic zakat calculation on all revenue.</p>
       <span class="f-tag">2% Zakat Auto</span>
     </div>
     <div class="f-card">

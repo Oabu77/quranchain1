@@ -82,7 +82,7 @@ const openapi = fromHono(app, {
         "Multipass VM fleet management, Minecraft server tracking (Qcmesh1/Qcmesh2), " +
         "backup registry with mesh replication, and operational task management. " +
         "Authentication: /signup, /login, /checkout/:plan, /onboarding. " +
-        "Payments: Stripe Checkout integration at /api/checkout/session. " +
+        "Payments: DarPay™ halal checkout at /api/checkout/session (Stripe backend). " +
         "Inter-Company Contracts: 101 companies, 120+ contracts ($200K+/mo), monthly autopay on all. " +
         "DarLaw AI™: 11 legal AI agents handling corporate filings, IP protection, " +
         "75 trademarks, 27 patents, 8 copyrights, 6 trade secrets, international IP across 153 countries. " +

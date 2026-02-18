@@ -22,9 +22,9 @@ export const ALL_CONTRACTS: ContractDef[] = [
   { title: "DarCloud — AI Fleet Compute", provider: "darcloud-host", client: "darcloud-ai", type: "gpu-compute", desc: "GPU compute for 71 AI agents + 12 GPT-4o assistants. Edge inference on 200+ PoPs.", fee: 4999 },
   { title: "DarCloud — HWC Banking Hosting", provider: "darcloud-host", client: "hwc", type: "cloud-hosting", desc: "SOC2-compliant financial infrastructure for HWC banking and lending.", fee: 1999 },
   { title: "DarCloud — Real Estate Platform", provider: "darcloud-host", client: "dar-al-nas", type: "cloud-hosting", desc: "Property database, listing engine, Zillow/Redfin integration for 31 markets.", fee: 1499 },
-  { title: "DarCloud — Revenue Engine Hosting", provider: "darcloud-host", client: "darcloud-revenue", type: "cloud-hosting", desc: "Revenue processing, Stripe webhooks, gas toll distribution engine.", fee: 999 },
+  { title: "DarCloud — Revenue Engine Hosting", provider: "darcloud-host", client: "darcloud-revenue", type: "cloud-hosting", desc: "Revenue processing, DarPay™ webhooks, gas toll distribution engine.", fee: 999 },
   { title: "DarCloud — DarLaw AI Hosting", provider: "darcloud-host", client: "darlaw", type: "cloud-hosting", desc: "Legal AI agent hosting, document generation, IP protection systems.", fee: 1999 },
-  { title: "DarCloud — DarPay Hosting", provider: "darcloud-host", client: "darpay", type: "cloud-hosting", desc: "Payment processing infrastructure, Stripe integration, multi-currency halal gateway.", fee: 1499 },
+  { title: "DarCloud — DarPay Hosting", provider: "darcloud-host", client: "darpay", type: "cloud-hosting", desc: "DarPay™ payment processing infrastructure, halal gateway backend, multi-currency support.", fee: 1499 },
   { title: "DarCloud — Enterprise Hosting", provider: "darcloud-host", client: "darcloud-enterprise", type: "cloud-hosting", desc: "Enterprise customer infrastructure, compliance engine, analytics.", fee: 2999 },
   { title: "DarCloud — DarTakaful Hosting", provider: "darcloud-host", client: "dartakaful", type: "cloud-hosting", desc: "Insurance platform infrastructure, risk pool processing, claims automation.", fee: 2499 },
   { title: "DarCloud — DarSukuk Hosting", provider: "darcloud-host", client: "darsukuk", type: "cloud-hosting", desc: "Islamic bond trading platform, tokenization engine, distribution systems.", fee: 1999 },
@@ -105,8 +105,8 @@ export const ALL_CONTRACTS: ContractDef[] = [
   // ═══════════════════════════════════════
   // REVENUE ENGINE SERVICES
   // ═══════════════════════════════════════
-  { title: "Revenue Engine — DarCloud Billing", provider: "darcloud-revenue", client: "darcloud-host", type: "billing", desc: "Usage-based billing, Stripe integration, invoicing, zakat auto-calculation.", fee: 999 },
-  { title: "Revenue Engine — HWC Payment Processing", provider: "darcloud-revenue", client: "hwc", type: "payment-processing", desc: "Mortgage payment processing, loan installments, Stripe subscriptions.", fee: 799 },
+  { title: "Revenue Engine — DarCloud Billing", provider: "darcloud-revenue", client: "darcloud-host", type: "billing", desc: "Usage-based billing via DarPay™, invoicing, zakat auto-calculation.", fee: 999 },
+  { title: "Revenue Engine — HWC Payment Processing", provider: "darcloud-revenue", client: "hwc", type: "payment-processing", desc: "Mortgage payment processing, loan installments, DarPay™ subscriptions.", fee: 799 },
   { title: "Revenue Engine — Enterprise Metering", provider: "darcloud-revenue", client: "darcloud-enterprise", type: "metering", desc: "API call metering, usage tracking, custom enterprise invoicing.", fee: 599 },
   { title: "Revenue Engine — DarTakaful Premium Collection", provider: "darcloud-revenue", client: "dartakaful", type: "premium-collection", desc: "Takaful premium collection, contribution processing, surplus distribution.", fee: 799 },
   { title: "Revenue Engine — DarSukuk Coupon Distribution", provider: "darcloud-revenue", client: "darsukuk", type: "coupon-distribution", desc: "Sukuk coupon payment processing and distribution to holders.", fee: 599 },
@@ -114,7 +114,7 @@ export const ALL_CONTRACTS: ContractDef[] = [
   // ═══════════════════════════════════════
   // DARPAY PAYMENT SERVICES
   // ═══════════════════════════════════════
-  { title: "DarPay — DarCloud Payment Gateway", provider: "darpay", client: "darcloud-host", type: "payment-gateway", desc: "Halal payment gateway, multi-currency, Stripe Connect.", fee: 999 },
+  { title: "DarPay — DarCloud Payment Gateway", provider: "darpay", client: "darcloud-host", type: "payment-gateway", desc: "DarPay™ halal payment gateway, multi-currency, white-label checkout.", fee: 999 },
   { title: "DarPay — Real Estate Payments", provider: "darpay", client: "dar-al-nas", type: "property-payments", desc: "$5K down payment processing, mortgage subscriptions, escrow.", fee: 1499 },
   { title: "DarPay — Enterprise Payment Rails", provider: "darpay", client: "darcloud-enterprise", type: "enterprise-payments", desc: "Enterprise plan processing, custom invoicing, ACH/wire.", fee: 799 },
   { title: "DarPay — DarTakaful Premium Payments", provider: "darpay", client: "dartakaful", type: "insurance-payments", desc: "Takaful premium collection via card, ACH, and crypto.", fee: 799 },

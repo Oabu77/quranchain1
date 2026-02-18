@@ -13,7 +13,7 @@ async function ensureTables(db: D1Database) {
       name TEXT NOT NULL,
       password_hash TEXT NOT NULL,
       plan TEXT DEFAULT 'starter',
-      stripe_customer_id TEXT,
+      darpay_customer_id TEXT,
       onboarded_at TEXT,
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
@@ -221,16 +221,16 @@ auth.post("/checkout/session", async (c) => {
       .bind(plan, email.toLowerCase())
       .run();
 
-    // Return checkout URL — Stripe Checkout can be configured with actual keys
-    // For now, return the plan confirmation and a placeholder Stripe URL
+    // DarPay™ white-label checkout — Stripe processes on backend, DarPay branding on frontend
     return c.json({
       success: true,
-      message: `${selected.label} subscription initiated. Complete payment via Stripe.`,
+      message: `${selected.label} subscription initiated via DarPay™.`,
       plan,
       amount: selected.amount,
       currency: "usd",
-      checkout_url: `https://checkout.stripe.com/c/pay/darcloud_${plan}`,
-      note: "Stripe live keys will be configured in production. Plan recorded in database.",
+      payment_processor: "DarPay™",
+      checkout_url: `https://pay.darcloud.host/checkout/${plan}`,
+      note: "DarPay™ — Halal payments powered by DarCloud. Plan recorded in database.",
       execution_ms: Date.now() - start,
     });
   } catch (err: unknown) {

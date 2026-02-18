@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS users (
   name TEXT NOT NULL,
   password_hash TEXT NOT NULL,
   plan TEXT DEFAULT 'starter',
-  stripe_customer_id TEXT,
+  darpay_customer_id TEXT,
   onboarded_at TEXT,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))

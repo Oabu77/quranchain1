@@ -251,7 +251,7 @@ export function checkoutPage(plan: string): string {
   return pageShell(`Checkout — ${p.name}`, `
 <div class="card" style="max-width:500px">
   <h1>Checkout: <span>${p.name}</span></h1>
-  <p class="sub">Secure, Shariah-compliant payment via Stripe</p>
+  <p class="sub">Secure, Shariah-compliant payment via DarPay™</p>
   <div class="error" id="error"></div>
   <div class="success" id="success"></div>
 
@@ -275,7 +275,7 @@ export function checkoutPage(plan: string): string {
   </form>
 
   <p style="text-align:center;margin-top:1rem;font-size:.8rem;color:var(--muted)">
-    🔒 Powered by Stripe • Zero riba • 2% Zakat auto-calculated
+    🔒 Powered by DarPay™ • Zero riba • 2% Zakat auto-calculated
   </p>
   <a href="/signup" class="btn btn-outline" style="text-decoration:none;margin-top:.5rem">← Back to signup</a>
 </div>

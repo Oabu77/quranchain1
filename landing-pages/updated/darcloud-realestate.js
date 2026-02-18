@@ -91,7 +91,7 @@ footer{padding:2rem;border-top:1px solid var(--bdr);text-align:center}
   <div class="approval-box">
     <h2>Auto-Approval Program</h2>
     <div class="big">$5,000</div>
-    <p>Down payment = auto-approved for full property purchase price<br>Smart contract generated \u2022 30-day funding window \u2022 Stripe subscription mortgage</p>
+    <p>Down payment = auto-approved for full property purchase price<br>Smart contract generated \u2022 30-day funding window \u2022 DarPay\u2122 subscription mortgage</p>
   </div>
 </section>
 <div class="container">
@@ -108,9 +108,9 @@ footer{padding:2rem;border-top:1px solid var(--bdr);text-align:center}
     <div class="section-head"><h2>How It Works</h2><p>From application to keys in hand \u2014 100% halal.</p></div>
     <div class="grid">
       <div class="card"><div class="card-icon">1\uFE0F\u20E3</div><h3>Join HWC</h3><p>Become a Halal Wealth Club member. Free membership. Access all financial services.</p></div>
-      <div class="card"><div class="card-icon">2\uFE0F\u20E3</div><h3>Pay $5,000 Down</h3><p>Universal down payment via Stripe. Auto-approved for the full purchase price immediately.</p></div>
+      <div class="card"><div class="card-icon">2\uFE0F\u20E3</div><h3>Pay $5,000 Down</h3><p>Universal down payment via DarPay\u2122. Auto-approved for the full purchase price immediately.</p></div>
       <div class="card"><div class="card-icon">3\uFE0F\u20E3</div><h3>Smart Contract</h3><p>SHA-256 blockchain smart contract generated. Immutable terms. 30-day funding window.</p></div>
-      <div class="card"><div class="card-icon">4\uFE0F\u20E3</div><h3>Move In</h3><p>Automatic Stripe subscription mortgage. First payment at closing. Zero interest forever.</p></div>
+      <div class="card"><div class="card-icon">4\uFE0F\u20E3</div><h3>Move In</h3><p>Automatic DarPay\u2122 subscription mortgage. First payment at closing. Zero interest forever.</p></div>
     </div>
   </div>
 </section>
