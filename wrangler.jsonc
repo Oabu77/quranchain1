@@ -13,11 +13,11 @@
 			"database_id": "26b921d0-3226-485d-a105-dc820a9abdbc"
 		}
 	],
-	// DarCloud domain routes — served via Argo Tunnel
+	// DarCloud domain routes — apex domains only.
+	// Subdomain workers (ai., mesh., blockchain., etc.) are deployed separately
+	// as standalone landing-page workers and must NOT be captured by wildcards.
 	"routes": [
 		{ "pattern": "darcloud.host/*", "zone_name": "darcloud.host" },
-		{ "pattern": "*.darcloud.host/*", "zone_name": "darcloud.host" },
-		{ "pattern": "darcloud.net/*", "zone_name": "darcloud.net" },
-		{ "pattern": "*.darcloud.net/*", "zone_name": "darcloud.net" }
+		{ "pattern": "darcloud.net/*", "zone_name": "darcloud.net" }
 	]
 }

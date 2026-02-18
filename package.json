@@ -3,7 +3,7 @@
 	"version": "5.4.0",
 	"description": "QuranChain™ DarCloud API — 101 companies, 77 AI agents, JWT auth, inter-company contracts, DarLaw AI, Islamic fintech. Built on Cloudflare Workers + D1 + Hono + chanfana OpenAPI.",
 	"cloudflare": {
-		"label": "Backend OpenAPI Template",
+		"label": "QuranChain™ DarCloud API",
 		"products": [
 			"Workers",
 			"D1"

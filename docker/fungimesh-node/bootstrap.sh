@@ -39,31 +39,23 @@ label = quranchain
 trademark = QuranChain™ / Dar Al-Nas™
 EOF
 
-# Register with mesh
+# Register with mesh via /mesh/connect API
 echo "[3/5] Registering with FungiMesh mesh..."
-REGISTER_PAYLOAD=$(cat <<EOF
+CONNECT_PAYLOAD=$(cat <<EOF
 {
-  "node_name": "${NODE_NAME}",
-  "role": "${NODE_ROLE}",
-  "wireguard_pubkey": "${WG_PUBKEY}",
-  "ip": "$(hostname -I 2>/dev/null | awk '{print $1}' || echo '0.0.0.0')",
-  "status": "online",
-  "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  "node_id": "${NODE_NAME}",
+  "hardware": "docker",
+  "region": "auto-detect",
+  "capabilities": ["${NODE_ROLE}"]
 }
 EOF
 )
 
-# Try to register with mesh upstream - don't fail if unavailable
-curl -sf -X POST "${MESH_UPSTREAM}/api/register" \
+# Try to register with main API (darcloud.host/mesh/connect)
+API_BASE="${API_URL:-https://darcloud.host}"
+curl -sf -X POST "${API_BASE}/mesh/connect" \
     -H "Content-Type: application/json" \
-    -d "$REGISTER_PAYLOAD" 2>/dev/null && echo "  Registered!" || echo "  Mesh upstream unavailable, running standalone"
-
-# Try to register with local API
-if [ -n "$API_URL" ]; then
-    curl -sf -X POST "${API_URL}/mesh/connect" \
-        -H "Content-Type: application/json" \
-        -d "$REGISTER_PAYLOAD" 2>/dev/null && echo "  Registered with API!" || echo "  API unavailable"
-fi
+    -d "$CONNECT_PAYLOAD" 2>/dev/null && echo "  Registered with API!" || echo "  API unavailable, running standalone"
 
 echo "[4/5] Starting health check server..."
 python3 /opt/fungimesh/health-server.py &
