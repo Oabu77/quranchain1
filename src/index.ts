@@ -6,48 +6,89 @@ import { meshRouter } from "./endpoints/mesh/router";
 import { aiRouter } from "./endpoints/ai/router";
 import { minecraftRouter } from "./endpoints/minecraft/router";
 import { multipassRouter } from "./endpoints/multipass/router";
+import { auth } from "./endpoints/auth";
+import { contracts } from "./endpoints/contracts";
 import { ContentfulStatusCode } from "hono/utils/http-status";
 import { SystemHealth } from "./endpoints/systemHealth";
+import {
+  SIGNUP_PAGE,
+  LOGIN_PAGE,
+  ONBOARDING_PAGE,
+  checkoutPage,
+} from "./pages";
 
 // Start a Hono app
 const app = new Hono<{ Bindings: Env }>();
 
+// ── CORS middleware for all routes ──
+app.use("*", async (c, next) => {
+  if (c.req.method === "OPTIONS") {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type,Authorization",
+      },
+    });
+  }
+  await next();
+  c.res.headers.set("Access-Control-Allow-Origin", "*");
+});
+
+// ── HTML Pages (signup, login, checkout, onboarding) ──
+app.get("/signup", (c) => c.html(SIGNUP_PAGE));
+app.get("/login", (c) => c.html(LOGIN_PAGE));
+app.get("/onboarding", (c) => c.html(ONBOARDING_PAGE));
+app.get("/checkout/:plan", (c) => c.html(checkoutPage(c.req.param("plan"))));
+
+// ── Auth & Checkout API ──
+app.route("/api", auth);
+
+// ── Inter-Company Contracts, OrDar Law, & IP Protection ──
+app.route("/api/contracts", contracts);
+
 app.onError((err, c) => {
-if (err instanceof ApiException) {
-return c.json(
-{ success: false, errors: err.buildResponse() },
-err.status as ContentfulStatusCode,
-);
-}
+  if (err instanceof ApiException) {
+    return c.json(
+      { success: false, errors: err.buildResponse() },
+      err.status as ContentfulStatusCode,
+    );
+  }
 
-console.error("Unhandled error:", err);
+  console.error("Unhandled error:", err);
 
-return c.json(
-{
-success: false,
-errors: [{ code: 7000, message: "Internal Server Error" }],
-},
-500,
-);
+  return c.json(
+    {
+      success: false,
+      errors: [{ code: 7000, message: "Internal Server Error" }],
+    },
+    500,
+  );
 });
 
 // Setup OpenAPI registry
 const openapi = fromHono(app, {
-docs_url: "/",
-schema: {
-info: {
-title: "QuranChain™ — DarCloud API",
-version: "5.0.0",
-description:
-"QuranChain™ production API powering the DarCloud infrastructure stack. " +
-"All endpoints produce real-world results from live upstream services — nothing is mocked. " +
-"Subsystems: 66 AI agents + 12 GPT-4o assistants (ai.darcloud.host), " +
-"FungiMesh dual-layer encrypted network (mesh.darcloud.host), " +
-"Multipass VM fleet management, Minecraft server tracking (Qcmesh1/Qcmesh2), " +
-"backup registry with mesh replication, and operational task management. " +
-"Built on Cloudflare Workers + D1 + Hono + chanfana OpenAPI.",
-},
-},
+  docs_url: "/docs",
+  schema: {
+    info: {
+      title: "QuranChain™ — DarCloud API",
+      version: "5.2.0",
+      description:
+        "QuranChain™ production API powering the DarCloud infrastructure stack. " +
+        "All endpoints produce real-world results from live upstream services — nothing is mocked. " +
+        "Subsystems: 66 AI agents + 12 GPT-4o assistants (ai.darcloud.host), " +
+        "FungiMesh dual-layer encrypted network (mesh.darcloud.host), " +
+        "Multipass VM fleet management, Minecraft server tracking (Qcmesh1/Qcmesh2), " +
+        "backup registry with mesh replication, and operational task management. " +
+        "Authentication: /signup, /login, /checkout/:plan, /onboarding. " +
+        "Payments: Stripe Checkout integration at /api/checkout/session. " +
+        "Inter-Company Contracts: 12 companies, 46+ contracts, monthly autopay on all. " +
+        "OrDar Law AI™: 7 legal AI agents handling corporate filings, IP protection, " +
+        "patents, trademarks, copyrights, and international property across 153 countries. " +
+        "Built on Cloudflare Workers + D1 + Hono + chanfana OpenAPI.",
+    },
+  },
 });
 
 // Register routers
