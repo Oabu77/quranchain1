@@ -70,19 +70,15 @@ ai_fleet: { ...aiHealth, upstream: AI_UPSTREAM },
 mesh_network: { ...meshHealth, upstream: MESH_UPSTREAM },
 };
 
-const allUp = dbHealth.status === "up" && aiHealth.status === "up" && meshHealth.status === "up";
-const allDown = dbHealth.status === "down" && aiHealth.status === "down" && meshHealth.status === "down";
-
-const status: "healthy" | "degraded" | "unhealthy" = allUp
-? "healthy"
-: allDown
-? "unhealthy"
-: "degraded";
+// Core health = database. External Workers (AI/Mesh) are autonomous services
+// with their own health endpoints — they don't degrade the core API status.
+const status: "healthy" | "degraded" | "unhealthy" =
+dbHealth.status === "up" ? "healthy" : "unhealthy";
 
 return {
 success: true as const,
 status,
-version: "5.0.0",
+version: "5.3.0",
 uptime_info: {
 checked_at: new Date().toISOString(),
 worker_region: (c.req.raw.cf as Record<string, unknown>)?.colo as string || "unknown",

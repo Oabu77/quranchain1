@@ -1,6 +1,3 @@
---1f2da250a5402d8ee351bc2443c26dbea588750d608b4df5d6c4cc70b5b4
-Content-Disposition: form-data; name="index.js"
-
 // src/index.js
 var CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -11,8 +8,8 @@ var LANDING = `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>DarCloud AI Fleet \u2014 71 Intelligent Agents</title>
-<meta name="description" content="71 specialized AI agents powered by GPT-4o. Customer service, revenue optimization, blockchain validation, real estate, and more.">
+<title>DarCloud AI Fleet \u2014 77 Intelligent Agents</title>
+<meta name="description" content="77 specialized AI agents powered by GPT-4o. Customer service, revenue optimization, blockchain validation, real estate, legal AI, and more.">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>\u{1F916}</text></svg>">
 <style>
 :root{--bg:#060a14;--s1:#0c1220;--s2:#121a2e;--bdr:#1e2d4a;--blue:#0096ff;--cyan:#00d4ff;--purple:#8b5cf6;--txt:#d8e4f0;--muted:#7088a8;--grad:linear-gradient(135deg,#0096ff,#00d4ff)}
@@ -82,17 +79,17 @@ footer{padding:2rem;border-top:1px solid var(--bdr);text-align:center;position:r
   <a class="btn btn-ai" href="/api/assistants">Explore Agents</a>
 </nav>
 <section class="hero">
-  <div class="hero-badge"><span class="dot"></span> 71 Agents Deployed \u2014 All Online</div>
-  <h1><span>71 AI Agents</span> at Your Service</h1>
+  <div class="hero-badge"><span class="dot"></span> 77 Agents Deployed \u2014 All Online</div>
+  <h1><span>77 AI Agents</span> at Your Service</h1>
   <p>The largest Islamic AI workforce in production. GPT-4o powered assistants for blockchain validation, revenue optimization, real estate, customer service, and enterprise operations.</p>
   <div class="hero-btns">
-    <a class="btn btn-ai" href="/api/chat">Start Chat</a>
+    <a class="btn btn-ai" href="/api/fleet">Browse All Agents</a>
     <a class="btn btn-outline" href="/api/fleet">View Full Fleet</a>
   </div>
 </section>
 <div class="container">
   <div class="stats">
-    <div class="st"><div class="st-val">71</div><div class="st-lbl">AI Agents</div></div>
+    <div class="st"><div class="st-val">77</div><div class="st-lbl">AI Agents</div></div>
     <div class="st"><div class="st-val">12</div><div class="st-lbl">Core Assistants</div></div>
     <div class="st"><div class="st-val">GPT-4o</div><div class="st-lbl">Model</div></div>
     <div class="st"><div class="st-val">24/7</div><div class="st-lbl">Availability</div></div>
@@ -155,13 +152,24 @@ footer{padding:2rem;border-top:1px solid var(--bdr);text-align:center;position:r
         </div>
       </div>
       <div class="tier">
-        <div class="tier-head"><h3>Platform Agents</h3><span class="tier-count">9+</span></div>
+        <div class="tier-head"><h3>Platform Agents</h3><span class="tier-count">9</span></div>
         <div class="tier-agents">
           <span class="agent-tag">Payment Tools</span><span class="agent-tag">Security Tools</span>
           <span class="agent-tag">System Tools</span><span class="agent-tag">Web API</span>
           <span class="agent-tag">Data Science</span><span class="agent-tag">Logistics</span>
           <span class="agent-tag">API Error Mgr</span><span class="agent-tag">Subscription Mgr</span>
           <span class="agent-tag">Real Estate</span>
+        </div>
+      </div>
+      <div class="tier">
+        <div class="tier-head"><h3>DarLaw\u2122 Legal AI</h3><span class="tier-count">11</span></div>
+        <div class="tier-agents">
+          <span class="agent-tag">Corporate Formation</span><span class="agent-tag">IP Protection</span>
+          <span class="agent-tag">Regulatory Compliance</span><span class="agent-tag">Contract Automation</span>
+          <span class="agent-tag">Real Estate Law</span><span class="agent-tag">International Law</span>
+          <span class="agent-tag">Tax & Zakat</span><span class="agent-tag">Takaful & Insurance</span>
+          <span class="agent-tag">Fintech & Banking</span><span class="agent-tag">Crypto & DeFi</span>
+          <span class="agent-tag">Shariah Advisory</span>
         </div>
       </div>
     </div>
@@ -173,14 +181,14 @@ footer{padding:2rem;border-top:1px solid var(--bdr);text-align:center;position:r
     <div class="api-grid">
       <div class="api-card"><span class="api-method post">POST</span><span class="api-path">/api/chat</span><div class="api-desc">Send a message to any agent. Body: { agent, message }</div></div>
       <div class="api-card"><span class="api-method get">GET</span><span class="api-path">/api/assistants</span><div class="api-desc">List all 12 core assistants with endpoints</div></div>
-      <div class="api-card"><span class="api-method get">GET</span><span class="api-path">/api/fleet</span><div class="api-desc">Full fleet listing \u2014 all 71 agents with status</div></div>
+      <div class="api-card"><span class="api-method get">GET</span><span class="api-path">/api/fleet</span><div class="api-desc">Full fleet listing \u2014 all 77 agents with status</div></div>
       <div class="api-card"><span class="api-method get">GET</span><span class="api-path">/api/agent/:name</span><div class="api-desc">Individual agent info and endpoints</div></div>
     </div>
   </div>
 </section>
 <section class="cta">
   <h2>Put AI to Work</h2>
-  <p>Start chatting with any of our 71 agents, or browse the full fleet to find the right expertise.</p>
+  <p>Start chatting with any of our 77 agents, or browse the full fleet to find the right expertise.</p>
   <div class="hero-btns">
     <a class="btn btn-ai" href="/api/fleet">Browse Fleet</a>
     <a class="btn btn-outline" href="https://darcloud.host">DarCloud Platform</a>
@@ -282,7 +290,19 @@ var AGENT_FLEET = [
   "Logistics Bot",
   "API Error Manager Agent",
   "Subscription Manager Agent",
-  "Logistics Agent"
+  "Logistics Agent",
+  // DarLaw AI Legal Agents
+  "DarLaw Corporate Formation Agent",
+  "DarLaw IP Protection Agent",
+  "DarLaw Regulatory Compliance Agent",
+  "DarLaw Contract Automation Agent",
+  "DarLaw Real Estate Law Agent",
+  "DarLaw International Law Agent",
+  "DarLaw Tax & Zakat Agent",
+  "DarLaw Takaful & Insurance Agent",
+  "DarLaw Fintech & Banking Agent",
+  "DarLaw Crypto & DeFi Agent",
+  "DarLaw Shariah Advisory Agent"
 ];
 var src_default = {
   async fetch(request, env, ctx) {
@@ -336,7 +356,8 @@ var src_default = {
           expert_agents: 7,
           specialized: 8,
           gas_toll_agents: 12,
-          platform_agents: 9
+          platform_agents: 9,
+          darlaw_legal_agents: 11
         }
       });
     }
@@ -407,6 +428,3 @@ function json(data, status = 200) {
 export {
   src_default as default
 };
-//# sourceMappingURL=index.js.map
-
---1f2da250a5402d8ee351bc2443c26dbea588750d608b4df5d6c4cc70b5b4--
