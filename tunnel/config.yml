@@ -1,0 +1,20 @@
+# Cloudflare Argo Tunnel configuration for QuranChain / DarCloud services
+# Run: cloudflared tunnel run quranchain-tunnel
+tunnel: quranchain-tunnel
+credentials-file: /workspaces/quranchain1/tunnel/credentials.json
+
+ingress:
+  # Main DarCloud API → local worker
+  - hostname: darcloud.host
+    service: http://localhost:8787
+  - hostname: "*.darcloud.host"
+    service: http://localhost:8787
+
+  # DarCloud.net alternate domain
+  - hostname: darcloud.net
+    service: http://localhost:8787
+  - hostname: "*.darcloud.net"
+    service: http://localhost:8787
+
+  # Catch-all (required by cloudflared)
+  - service: http_status:404
