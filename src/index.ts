@@ -5,6 +5,7 @@ import { backupsRouter } from "./endpoints/backups/router";
 import { meshRouter } from "./endpoints/mesh/router";
 import { aiRouter } from "./endpoints/ai/router";
 import { minecraftRouter } from "./endpoints/minecraft/router";
+import { multipassRouter } from "./endpoints/multipass/router";
 import { ContentfulStatusCode } from "hono/utils/http-status";
 import { DummyEndpoint } from "./endpoints/dummyEndpoint";
 
@@ -38,9 +39,9 @@ const openapi = fromHono(app, {
 	schema: {
 		info: {
 			title: "QuranChain™ — DarCloud API",
-			version: "3.0.0",
+			version: "4.0.0",
 			description:
-				"QuranChain™ backend API with FungiMesh connectivity, backup management, Minecraft server tracking, AI fleet benchmark, and Cloudflare tunnel integration. Serving darcloud.host & darcloud.net.",
+				"QuranChain™ backend API with FungiMesh connectivity, backup management, Minecraft server tracking, AI fleet benchmark, Multipass VM fleet, and Cloudflare tunnel integration. Serving darcloud.host & darcloud.net.",
 		},
 	},
 });
@@ -59,6 +60,9 @@ openapi.route("/ai", aiRouter);
 
 // Register Minecraft Server Management Sub router
 openapi.route("/minecraft", minecraftRouter);
+
+// Register Multipass VM Fleet Sub router
+openapi.route("/multipass", multipassRouter);
 
 // Register other endpoints
 openapi.post("/dummy/:slug", DummyEndpoint);

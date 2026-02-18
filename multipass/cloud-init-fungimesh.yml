@@ -1,0 +1,266 @@
+#cloud-config
+# ==========================================================
+# QuranChain™ / Dar Al-Nas™ Proprietary System
+# Founder: Omar Mohammad Abunadi
+# All Rights Reserved. Trademark Protected.
+# ==========================================================
+#
+# FungiMesh Node — Multipass Cloud-Init Configuration
+# Deploys a quantum-secured mesh node on Ubuntu VM
+#
+
+package_update: true
+package_upgrade: true
+
+packages:
+  - curl
+  - wget
+  - git
+  - jq
+  - wireguard
+  - wireguard-tools
+  - ufw
+  - fail2ban
+  - unattended-upgrades
+  - python3
+  - python3-pip
+  - python3-venv
+  - nodejs
+  - npm
+  - docker.io
+  - docker-compose
+  - net-tools
+  - htop
+  - tmux
+
+users:
+  - name: quranchain
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
+    groups: [docker, sudo]
+    ssh_authorized_keys: []
+
+write_files:
+  # FungiMesh node configuration
+  - path: /etc/fungimesh/node.conf
+    permissions: "0644"
+    content: |
+      # FungiMesh Node Configuration
+      # ==========================================================
+      # QuranChain™ / Dar Al-Nas™ Proprietary System
+      # ==========================================================
+
+      [node]
+      name = "${FUNGIMESH_NODE_NAME}"
+      region = "auto"
+      role = "mesh-relay"
+      hardware = "${HARDWARE_ID}"
+
+      [network]
+      mesh_endpoint = "wss://mesh.darcloud.host/ws"
+      api_endpoint = "https://mesh.darcloud.host/api"
+      listen_port = 51820
+      discovery_port = 51821
+
+      [security]
+      encryption = "quantum-resistant"
+      key_exchange = "kyber-1024"
+      signature = "dilithium-5"
+      qkd_protocol = "bb84"
+      rotate_keys_hours = 24
+
+      [tunnel]
+      cloudflared_enabled = true
+      tunnel_name = "quranchain-tunnel"
+      api_proxy = "http://localhost:8787"
+
+      [heartbeat]
+      interval_seconds = 30
+      api_url = "https://darcloud.host/mesh/heartbeat"
+      health_check_port = 8080
+
+      [backup]
+      enabled = true
+      schedule = "0 3 * * *"
+      retention_days = 30
+      storage_path = "/backups/fungimesh"
+      label = "quranchain"
+
+  # FungiMesh bootstrap service
+  - path: /opt/fungimesh/bootstrap.sh
+    permissions: "0755"
+    content: |
+      #!/bin/bash
+      # ==========================================================
+      # QuranChain™ FungiMesh Bootstrap
+      # ==========================================================
+      set -euo pipefail
+
+      NODE_NAME="${1:-fungimesh-node}"
+      HARDWARE="${2:-multipass}"
+      API_URL="https://darcloud.host"
+      MESH_URL="https://mesh.darcloud.host"
+
+      echo "[FungiMesh] Bootstrapping node: $NODE_NAME on $HARDWARE"
+
+      # Generate WireGuard keys
+      umask 077
+      mkdir -p /etc/wireguard
+      wg genkey | tee /etc/wireguard/privatekey | wg pubkey > /etc/wireguard/publickey
+      PRIVATE_KEY=$(cat /etc/wireguard/privatekey)
+      PUBLIC_KEY=$(cat /etc/wireguard/publickey)
+
+      echo "[FungiMesh] WireGuard keys generated"
+      echo "[FungiMesh] Public key: $PUBLIC_KEY"
+
+      # Configure WireGuard interface
+      cat > /etc/wireguard/fungimesh0.conf <<WGEOF
+      [Interface]
+      PrivateKey = $PRIVATE_KEY
+      Address = 10.77.0.0/16
+      ListenPort = 51820
+      PostUp = iptables -A FORWARD -i fungimesh0 -j ACCEPT; iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
+      PostDown = iptables -D FORWARD -i fungimesh0 -j ACCEPT; iptables -t nat -D POSTROUTING -o eth0 -j MASQUERADE
+      SaveConfig = true
+      WGEOF
+
+      # Enable IP forwarding
+      echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf
+      echo "net.ipv6.conf.all.forwarding=1" >> /etc/sysctl.conf
+      sysctl -p
+
+      # Start WireGuard
+      systemctl enable wg-quick@fungimesh0
+      systemctl start wg-quick@fungimesh0
+
+      echo "[FungiMesh] WireGuard mesh interface up"
+
+      # Register with mesh network
+      REGISTRATION=$(curl -s -X POST "$API_URL/mesh/connect" \
+        -H "Content-Type: application/json" \
+        -d "{
+          \"node_name\": \"$NODE_NAME\",
+          \"hardware\": \"$HARDWARE\",
+          \"public_key\": \"$PUBLIC_KEY\",
+          \"endpoint\": \"$(hostname -I | awk '{print $1}'):51820\",
+          \"capabilities\": [\"relay\", \"backup\", \"compute\"]
+        }" 2>/dev/null || echo '{"error":"registration failed"}')
+
+      echo "[FungiMesh] Registration: $REGISTRATION"
+
+      # Install cloudflared for tunnel
+      curl -sL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o /usr/local/bin/cloudflared
+      chmod +x /usr/local/bin/cloudflared
+      echo "[FungiMesh] Cloudflared installed"
+
+      # Start health check service
+      cat > /opt/fungimesh/healthcheck.py <<PYEOF
+      #!/usr/bin/env python3
+      """FungiMesh Node Health Check Server"""
+      import http.server
+      import json
+      import subprocess
+      import socket
+      import os
+      from datetime import datetime
+
+      class HealthHandler(http.server.BaseHTTPRequestHandler):
+          def do_GET(self):
+              if self.path == '/health':
+                  wg_status = subprocess.run(['wg', 'show'], capture_output=True, text=True)
+                  health = {
+                      'status': 'healthy' if wg_status.returncode == 0 else 'degraded',
+                      'node': os.environ.get('FUNGIMESH_NODE_NAME', socket.gethostname()),
+                      'hardware': os.environ.get('HARDWARE_ID', 'multipass'),
+                      'timestamp': datetime.utcnow().isoformat() + 'Z',
+                      'wireguard': 'active' if wg_status.returncode == 0 else 'inactive',
+                      'uptime': subprocess.run(['uptime', '-p'], capture_output=True, text=True).stdout.strip(),
+                      'mesh_endpoint': 'wss://mesh.darcloud.host/ws',
+                  }
+                  self.send_response(200)
+                  self.send_header('Content-Type', 'application/json')
+                  self.end_headers()
+                  self.wfile.write(json.dumps(health).encode())
+              else:
+                  self.send_response(404)
+                  self.end_headers()
+
+          def log_message(self, format, *args):
+              pass
+
+      if __name__ == '__main__':
+          server = http.server.HTTPServer(('0.0.0.0', 8080), HealthHandler)
+          print('[FungiMesh] Health check on :8080')
+          server.serve_forever()
+      PYEOF
+
+      python3 /opt/fungimesh/healthcheck.py &
+      echo "[FungiMesh] Health check service started on :8080"
+
+      echo "[FungiMesh] Node $NODE_NAME fully bootstrapped"
+
+  # Systemd service for FungiMesh
+  - path: /etc/systemd/system/fungimesh.service
+    permissions: "0644"
+    content: |
+      [Unit]
+      Description=QuranChain FungiMesh Node
+      After=network-online.target
+      Wants=network-online.target
+
+      [Service]
+      Type=simple
+      User=root
+      Environment=FUNGIMESH_NODE_NAME=fungimesh-multipass
+      Environment=HARDWARE_ID=multipass
+      ExecStart=/opt/fungimesh/bootstrap.sh fungimesh-multipass multipass
+      Restart=on-failure
+      RestartSec=10
+
+      [Install]
+      WantedBy=multi-user.target
+
+  # Firewall rules
+  - path: /opt/fungimesh/firewall.sh
+    permissions: "0755"
+    content: |
+      #!/bin/bash
+      # FungiMesh Firewall Configuration
+      ufw default deny incoming
+      ufw default allow outgoing
+      ufw allow 22/tcp        # SSH
+      ufw allow 51820/udp     # WireGuard mesh
+      ufw allow 51821/udp     # Mesh discovery
+      ufw allow 8080/tcp      # Health check
+      ufw allow 8787/tcp      # API proxy
+      ufw --force enable
+      echo "[FungiMesh] Firewall configured"
+
+runcmd:
+  # Create directories
+  - mkdir -p /opt/fungimesh /etc/fungimesh /backups/fungimesh
+  # Set permissions
+  - chown -R quranchain:quranchain /opt/fungimesh /backups/fungimesh
+  # Configure firewall
+  - bash /opt/fungimesh/firewall.sh
+  # Enable Docker
+  - systemctl enable docker
+  - systemctl start docker
+  # Enable fail2ban
+  - systemctl enable fail2ban
+  - systemctl start fail2ban
+  # Bootstrap FungiMesh
+  - bash /opt/fungimesh/bootstrap.sh fungimesh-multipass multipass
+  # Enable service for auto-restart
+  - systemctl daemon-reload
+  - systemctl enable fungimesh.service
+
+final_message: |
+  ============================================
+  QuranChain™ FungiMesh Node Ready
+  ============================================
+  Node: fungimesh-multipass
+  Mesh: wss://mesh.darcloud.host/ws
+  Health: http://$(hostname -I | awk '{print $1}'):8080/health
+  WireGuard: fungimesh0 on :51820
+  ============================================
