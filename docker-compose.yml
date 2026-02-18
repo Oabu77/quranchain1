@@ -1,0 +1,97 @@
+# ==========================================================
+# QuranChain™ / Dar Al-Nas™ Proprietary System
+# FungiMesh Docker Fleet — docker-compose.yml
+# ==========================================================
+version: "3.9"
+
+x-fungimesh-common: &fungimesh-common
+  build:
+    context: ./docker/fungimesh-node
+    dockerfile: Dockerfile
+  restart: unless-stopped
+  cap_add:
+    - NET_ADMIN
+  networks:
+    - fungimesh
+
+services:
+  # ─── Relay Nodes ───────────────────────────────
+  fungimesh-relay1:
+    <<: *fungimesh-common
+    container_name: fungimesh-relay1
+    hostname: fungimesh-relay1
+    environment:
+      NODE_NAME: fungimesh-relay1
+      NODE_ROLE: relay
+      MESH_UPSTREAM: https://mesh.darcloud.host
+      API_URL: http://host.docker.internal:8787
+    ports:
+      - "8081:8080"
+      - "51821:51820/udp"
+
+  fungimesh-relay2:
+    <<: *fungimesh-common
+    container_name: fungimesh-relay2
+    hostname: fungimesh-relay2
+    environment:
+      NODE_NAME: fungimesh-relay2
+      NODE_ROLE: relay
+      MESH_UPSTREAM: https://mesh.darcloud.host
+      API_URL: http://host.docker.internal:8787
+    ports:
+      - "8082:8080"
+      - "51822:51820/udp"
+
+  # ─── Compute Node ─────────────────────────────
+  fungimesh-compute1:
+    <<: *fungimesh-common
+    container_name: fungimesh-compute1
+    hostname: fungimesh-compute1
+    environment:
+      NODE_NAME: fungimesh-compute1
+      NODE_ROLE: compute
+      MESH_UPSTREAM: https://mesh.darcloud.host
+      API_URL: http://host.docker.internal:8787
+    ports:
+      - "8083:8080"
+      - "51823:51820/udp"
+
+  # ─── Backup Node ──────────────────────────────
+  fungimesh-backup1:
+    <<: *fungimesh-common
+    container_name: fungimesh-backup1
+    hostname: fungimesh-backup1
+    environment:
+      NODE_NAME: fungimesh-backup1
+      NODE_ROLE: backup
+      MESH_UPSTREAM: https://mesh.darcloud.host
+      API_URL: http://host.docker.internal:8787
+    ports:
+      - "8084:8080"
+      - "51824:51820/udp"
+    volumes:
+      - fungimesh-backups:/var/backups/fungimesh
+
+  # ─── Gateway Node ─────────────────────────────
+  fungimesh-gateway1:
+    <<: *fungimesh-common
+    container_name: fungimesh-gateway1
+    hostname: fungimesh-gateway1
+    environment:
+      NODE_NAME: fungimesh-gateway1
+      NODE_ROLE: gateway
+      MESH_UPSTREAM: https://mesh.darcloud.host
+      API_URL: http://host.docker.internal:8787
+    ports:
+      - "8085:8080"
+      - "51825:51820/udp"
+
+networks:
+  fungimesh:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+
+volumes:
+  fungimesh-backups:
