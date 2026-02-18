@@ -1,6 +1,3 @@
---04db2dc83fbb325be9a3e26b8314dc9e040408e472925f8d26bef57d5db2
-Content-Disposition: form-data; name="index.js"
-
 // src/index.js
 var CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -217,6 +214,3 @@ function json(data, status = 200) {
 export {
   src_default as default
 };
-//# sourceMappingURL=index.js.map
-
---04db2dc83fbb325be9a3e26b8314dc9e040408e472925f8d26bef57d5db2--

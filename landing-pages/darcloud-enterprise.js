@@ -1,6 +1,3 @@
---9c522cf7cc37ea3e629850dd317f73a1363b26b7efc0e3297e20e20ac57a
-Content-Disposition: form-data; name="index.js"
-
 // src/index.js
 var CORS = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET,POST,OPTIONS", "Access-Control-Allow-Headers": "Content-Type,Authorization" };
 var jsonRes = (d, s = 200) => new Response(JSON.stringify(d), { status: s, headers: { "Content-Type": "application/json", ...CORS } });
@@ -67,6 +64,19 @@ nav{position:sticky;top:0;z-index:100;background:rgba(10,22,40,.95);backdrop-fil
 .plan li{padding:.35rem 0;font-size:.85rem;color:var(--muted)}
 .plan li::before{content:'\u2713 ';color:var(--blue);font-weight:700}
 .plan .btn{width:100%;text-align:center;margin-top:1rem}
+
+/* Contact Form */
+.contact-section{padding:5rem 1.5rem;background:var(--s1);border-top:1px solid var(--bdr);border-bottom:1px solid var(--bdr)}
+.contact-section h2{font-size:2rem;color:var(--white);margin-bottom:1rem;text-align:center}
+.contact-section > p{color:var(--muted);margin-bottom:2rem;max-width:500px;margin-left:auto;margin-right:auto;text-align:center}
+.contact-form{max-width:600px;margin:0 auto}
+.form-group{margin-bottom:1.25rem}
+.form-group label{display:block;font-size:.85rem;color:var(--white);margin-bottom:.4rem;font-weight:500}
+.form-group input,.form-group textarea,.form-group select{width:100%;padding:.7rem 1rem;background:var(--s2);border:1px solid var(--bdr);border-radius:8px;color:var(--txt);font-size:.9rem;font-family:inherit;transition:border-color .2s}
+.form-group input:focus,.form-group textarea:focus,.form-group select:focus{outline:none;border-color:var(--blue)}
+.form-group textarea{resize:vertical;min-height:100px}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
+@media(max-width:768px){.form-row{grid-template-columns:1fr}}
 
 .cta{text-align:center;padding:5rem 1.5rem;background:var(--s1);border-top:1px solid var(--bdr);border-bottom:1px solid var(--bdr)}
 .cta h2{font-size:2rem;color:var(--white);margin-bottom:1rem}
@@ -169,7 +179,7 @@ footer{padding:3rem 2rem;border-top:1px solid var(--bdr);text-align:center}
           <li>Email Support</li>
           <li>99.9% SLA</li>
         </ul>
-        <a class="btn btn-outline" href="#contact">Get Started</a>
+        <a class="btn btn-outline" href="https://darcloud.host/checkout/startup">Get Started</a>
       </div>
       <div class="plan recommended">
         <div class="plan-name">Business</div>
@@ -201,14 +211,69 @@ footer{padding:3rem 2rem;border-top:1px solid var(--bdr);text-align:center}
   </div>
 </section>
 
-<section id="contact" class="cta">
-  <h2>Ready to Scale with DarCloud?</h2>
+<section id="contact" class="contact-section">
+  <h2>Contact Our Enterprise Team</h2>
   <p>Our enterprise team will design a custom solution for your organization's infrastructure and compliance needs.</p>
-  <div class="hero-btns">
-    <a class="btn btn-blue" href="mailto:omarabunadi28@gmail.com?subject=DarCloud Enterprise Inquiry">Contact Sales</a>
-    <a class="btn btn-outline" href="https://darcloud.host">Explore Platform</a>
+  <div class="contact-form">
+    <form id="contactForm" onsubmit="return handleSubmit(event)">
+      <div class="form-row">
+        <div class="form-group">
+          <label for="name">Full Name *</label>
+          <input type="text" id="name" name="name" required placeholder="Your full name">
+        </div>
+        <div class="form-group">
+          <label for="email">Email Address *</label>
+          <input type="email" id="email" name="email" required placeholder="you@company.com">
+        </div>
+      </div>
+      <div class="form-group">
+        <label for="company">Company Name *</label>
+        <input type="text" id="company" name="company" required placeholder="Your company">
+      </div>
+      <div class="form-group">
+        <label for="message">Message *</label>
+        <textarea id="message" name="message" required placeholder="Tell us about your infrastructure needs, team size, and compliance requirements..."></textarea>
+      </div>
+      <button type="submit" class="btn btn-blue" id="submitBtn" style="width:100%;text-align:center;cursor:pointer">Submit Inquiry</button>
+    </form>
+    <div id="error" style="display:none;color:#ef4444;margin-top:1rem;text-align:center;font-size:.9rem"></div>
+    <div id="success" style="display:none;color:#10b981;margin-top:1rem;text-align:center;font-size:.9rem"></div>
   </div>
 </section>
+
+<script>
+async function handleSubmit(e) {
+  e.preventDefault();
+  var btn = document.getElementById('submitBtn');
+  var error = document.getElementById('error');
+  var success = document.getElementById('success');
+  error.style.display='none'; success.style.display='none';
+  btn.textContent='Submitting...'; btn.disabled=true;
+  try {
+    var formData = {
+      name: document.getElementById('name').value,
+      email: document.getElementById('email').value,
+      company: document.getElementById('company').value,
+      message: document.getElementById('message').value,
+      source: 'enterprise'
+    };
+    var res = await fetch('https://darcloud.host/api/contact', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(formData)
+    });
+    var data = await res.json();
+    if(!res.ok) throw new Error(data.error || 'Submission failed');
+    success.textContent = data.message || 'Thank you! Our enterprise team will contact you within 24 hours.';
+    success.style.display='block';
+    document.getElementById('contactForm').reset();
+  } catch(err) {
+    error.textContent = err.message || 'Something went wrong. Please try again.';
+    error.style.display='block';
+  }
+  btn.textContent='Submit Inquiry'; btn.disabled=false;
+  return false;
+}
+</script>
 
 <footer>
   <div class="footer-links">
@@ -246,6 +311,3 @@ var src_default = {
 export {
   src_default as default
 };
-//# sourceMappingURL=index.js.map
-
---9c522cf7cc37ea3e629850dd317f73a1363b26b7efc0e3297e20e20ac57a--

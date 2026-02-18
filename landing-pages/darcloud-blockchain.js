@@ -1,6 +1,3 @@
---d5e0815086688159121df536b5c86b4a199bda4cd4d01c8ec5d6beef2ddb
-Content-Disposition: form-data; name="index.js"
-
 // src/index.js
 var CORS = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET,POST,OPTIONS", "Access-Control-Allow-Headers": "Content-Type,Authorization" };
 var jsonRes = (d, s = 200) => new Response(JSON.stringify(d), { status: s, headers: { "Content-Type": "application/json", ...CORS } });
@@ -270,6 +267,3 @@ var src_default = {
 export {
   src_default as default
 };
-//# sourceMappingURL=index.js.map
-
---d5e0815086688159121df536b5c86b4a199bda4cd4d01c8ec5d6beef2ddb--

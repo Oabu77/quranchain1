@@ -77,7 +77,7 @@ const openapi = fromHono(app, {
   schema: {
     info: {
       title: "QuranChain™ — DarCloud API",
-      version: "5.3.0",
+      version: "5.4.0",
       description:
         "QuranChain™ production API powering the DarCloud infrastructure stack. " +
         "All endpoints produce real-world results from live upstream services — nothing is mocked. " +
@@ -85,8 +85,10 @@ const openapi = fromHono(app, {
         "FungiMesh dual-layer encrypted network (mesh.darcloud.host), " +
         "Multipass VM fleet management, Minecraft server tracking (Qcmesh1/Qcmesh2), " +
         "backup registry with mesh replication, and operational task management. " +
-        "Authentication: /signup, /login, /checkout/:plan, /onboarding. " +
+        "Authentication: JWT HMAC-SHA256 tokens (24h expiry) via /signup, /login — protected routes at /api/auth/me, /api/admin/stats. " +
+        "Dashboard (/dashboard) and Admin panel (/admin) for real-time system management. " +
         "Payments: DarPay™ halal checkout at /api/checkout/session (Stripe backend). " +
+        "Rate limiting: 5 attempts/min per IP on auth endpoints. " +
         "Inter-Company Contracts: 101 companies, 175 contracts ($402K+/mo), monthly autopay on all. " +
         "DarLaw AI™: 11 legal AI agents handling corporate filings, IP protection, " +
         "75 trademarks, 27 patents, 8 copyrights, 6 trade secrets, international IP across 153 countries. " +

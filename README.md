@@ -1,72 +1,146 @@
-# OpenAPI Template
+# QuranChain™ — DarCloud API
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/cloudflare/templates/tree/main/chanfana-openapi-template)
+**v5.4.0** · Production API powering the DarCloud infrastructure stack.
 
-![OpenAPI Template Preview](https://imagedelivery.net/wSMYJvS3Xw-n339CbDyDIA/91076b39-1f5b-46f6-7f14-536a6f183000/public)
+> بِسْمِ اللَّهِ الرَّحْمَنِ الرَّحِيمِ
 
-<!-- dash-content-start -->
+## Overview
 
-This is a Cloudflare Worker with OpenAPI 3.1 Auto Generation and Validation using [chanfana](https://github.com/cloudflare/chanfana) and [Hono](https://github.com/honojs/hono).
+| Metric | Value |
+|--------|-------|
+| Companies | 101 |
+| Inter-company contracts | 175+ |
+| Monthly revenue | $402K+ |
+| AI agents | 77 (66 fleet + 11 DarLaw) |
+| D1 tables | 59 |
+| Tests | 41 passing |
 
-This is an example project made to be used as a quick start into building OpenAPI compliant Workers that generates the
-`openapi.json` schema automatically from code and validates the incoming request to the defined parameters or request body.
+## Stack
 
-This template includes various endpoints, a D1 database, and integration tests using [Vitest](https://vitest.dev/) as examples. In endpoints, you will find [chanfana D1 AutoEndpoints](https://chanfana.com/endpoints/auto/d1) and a [normal endpoint](https://chanfana.com/endpoints/defining-endpoints) to serve as examples for your projects.
+- **Runtime:** Cloudflare Workers (ESM)
+- **Framework:** [Hono](https://hono.dev) v4.10.7 + [chanfana](https://chanfana.com) v2.8.3 (OpenAPI 3.1)
+- **Database:** Cloudflare D1 (SQLite)
+- **Auth:** JWT HMAC-SHA256 with 24h expiry + IP-based rate limiting
+- **Validation:** Zod v3.25.67
+- **Tests:** Vitest + @cloudflare/vitest-pool-workers
+- **CI/CD:** GitHub Actions → TypeScript check → Tests → D1 migrations → Wrangler deploy
 
-Besides being able to see the OpenAPI schema (openapi.json) in the browser, you can also extract the schema locally no hassle by running this command `npm run schema`.
+## Domains
 
-<!-- dash-content-end -->
+| Domain | Service |
+|--------|---------|
+| `darcloud.host` | Main API + auth pages |
+| `ai.darcloud.host` | AI fleet (77 agents) |
+| `mesh.darcloud.host` | FungiMesh encrypted network |
+| `blockchain.darcloud.host` | QuranChain explorer |
+| `halalwealthclub.darcloud.host` | Halal Wealth Club |
+| `enterprise.darcloud.host` | Enterprise landing |
+| `realestate.darcloud.host` | DarEstate |
+| `darcloud.net` | Public landing |
 
-> [!IMPORTANT]
-> When using C3 to create this project, select "no" when it asks if you want to deploy. You need to follow this project's [setup steps](https://github.com/cloudflare/templates/tree/main/openapi-template#setup-steps) before deploying.
+## API Endpoints
 
-## Getting Started
+### Auth & Pages
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/signup` | Signup page |
+| GET | `/login` | Login page |
+| GET | `/dashboard` | User dashboard (JWT-protected client) |
+| GET | `/admin` | Admin panel (JWT-protected client) |
+| GET | `/onboarding` | Onboarding flow |
+| GET | `/checkout/:plan` | DarPay™ checkout |
+| POST | `/api/auth/signup` | Create account → JWT token |
+| POST | `/api/auth/login` | Login → JWT token |
+| GET | `/api/auth/me` | Current user info (Bearer token) |
+| GET | `/api/admin/stats` | Admin dashboard stats (Bearer token) |
 
-Outside of this repo, you can start a new project with this template using [C3](https://developers.cloudflare.com/pages/get-started/c3/) (the `create-cloudflare` CLI):
+### Contracts & DarLaw
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/contracts` | List all contracts |
+| GET | `/api/contracts/companies` | List 101 companies |
+| GET | `/api/contracts/revenue` | Revenue breakdown by company |
+| GET | `/api/contracts/darlaw/agents` | 11 DarLaw AI agents |
+| GET | `/api/contracts/legal/filings` | Legal filings |
+| GET | `/api/contracts/legal/ip` | IP portfolio (75 TM, 27 patents, 8 ©) |
+| POST | `/api/contracts/bootstrap` | Bootstrap full ecosystem |
+
+### Infrastructure (OpenAPI)
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/health` | System health check |
+| GET | `/docs` | Interactive OpenAPI explorer |
+| * | `/tasks` | Task management CRUD |
+| * | `/backups` | Backup registry |
+| * | `/mesh` | FungiMesh nodes |
+| * | `/ai` | AI fleet management |
+| * | `/minecraft` | Minecraft servers |
+| * | `/multipass` | VM fleet |
+
+## Quick Start
 
 ```bash
-npm create cloudflare@latest -- --template=cloudflare/templates/openapi-template
+# Install
+npm install
+
+# Local dev
+npm run dev
+
+# Run tests
+npx vitest run --config tests/vitest.config.mts
+
+# Deploy
+npm run deploy
 ```
 
-A live public deployment of this template is available at [https://openapi-template.templates.workers.dev](https://openapi-template.templates.workers.dev)
+## Environment Variables
 
-## Setup Steps
-
-1. Install the project dependencies with a package manager of your choice:
-   ```bash
-   npm install
-   ```
-2. Create a [D1 database](https://developers.cloudflare.com/d1/get-started/) with the name "openapi-template-db":
-   ```bash
-   npx wrangler d1 create openapi-template-db
-   ```
-   ...and update the `database_id` field in `wrangler.json` with the new database ID.
-3. Run the following db migration to initialize the database (notice the `migrations` directory in this project):
-   ```bash
-   npx wrangler d1 migrations apply DB --remote
-   ```
-4. Deploy the project!
-   ```bash
-   npx wrangler deploy
-   ```
-5. Monitor your worker
-   ```bash
-   npx wrangler tail
-   ```
-
-## Testing
-
-This template includes integration tests using [Vitest](https://vitest.dev/). To run the tests locally:
+Copy `.env.example` to `.env`:
 
 ```bash
-npm run test
+CLOUDFLARE_API_TOKEN=     # Workers Scripts:Edit, D1:Edit
+CLOUDFLARE_ACCOUNT_ID=    # From Workers dashboard
+JWT_SECRET=               # Set via: npx wrangler secret put JWT_SECRET
 ```
 
-Test files are located in the `tests/` directory, with examples demonstrating how to test your endpoints and database interactions.
+## Project Structure
 
-## Project structure
+```
+src/
+├── index.ts              # Hono app, routes, OpenAPI registry
+├── pages.ts              # Server-rendered HTML (signup, login, dashboard, admin)
+├── types.ts              # Shared types
+├── endpoints/
+│   ├── auth.ts           # JWT auth, rate limiting, signup/login/me/admin
+│   ├── contracts.ts      # 101 companies, 175 contracts, DarLaw AI, IP
+│   ├── systemHealth.ts   # Health check with component monitoring
+│   └── tasks/            # OpenAPI task CRUD
+├── data/
+│   ├── companies.ts      # 101 company definitions
+│   ├── contracts-data.ts # 175 contract templates
+│   ├── ip-portfolio.ts   # IP protections (trademarks, patents, etc.)
+│   └── legal-filings.ts  # Legal filing templates
+tests/
+├── integration/
+│   ├── auth.test.ts      # 17 auth tests (signup, login, JWT, admin)
+│   ├── contracts.test.ts # 12 contract tests (CRUD, DarLaw, migration)
+│   ├── tasks.test.ts     # 11 task CRUD tests
+│   └── dummyEndpoint.test.ts  # Health check test
+migrations/               # D1 SQL migrations
+```
 
-1. Your main router is defined in `src/index.ts`.
-2. Each endpoint has its own file in `src/endpoints/`.
-3. Integration tests are located in the `tests/` directory.
-4. For more information read the [chanfana documentation](https://chanfana.com/), [Hono documentation](https://hono.dev/docs), and [Vitest documentation](https://vitest.dev/guide/).
+## Islamic Finance
+
+All financial operations are Shariah-compliant:
+- **Zakat:** 2% auto-calculated on all revenue
+- **Founder Royalty:** 30% immutable on all contracts
+- **Autopay:** Monthly on all 175 contracts
+- **DarPay™:** Zero-riba payment processing
+
+## Owner
+
+**Omar Mohammad Abunadi** · [GitHub](https://github.com/Oabu77)
+
+---
+
+*Built with Cloudflare Workers + D1 + Hono + chanfana OpenAPI*

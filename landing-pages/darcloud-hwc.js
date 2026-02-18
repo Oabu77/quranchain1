@@ -1,6 +1,3 @@
---773246815472cc3359f9aa1d3b3774c5ba1550b01f54a58845802686ead9
-Content-Disposition: form-data; name="index.js"
-
 // src/index.js
 var CORS = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS", "Access-Control-Allow-Headers": "Content-Type,Authorization" };
 var jsonRes = (d, s = 200) => new Response(JSON.stringify(d), { status: s, headers: { "Content-Type": "application/json", ...CORS } });
@@ -70,6 +67,19 @@ nav{position:sticky;top:0;z-index:100;background:rgba(6,13,6,.95);backdrop-filte
 .trust-item{font-family:-apple-system,sans-serif}
 .trust-item .val{font-size:2rem;font-weight:700;color:var(--gold)}
 .trust-item .lbl{font-size:.8rem;color:var(--muted);margin-top:.2rem}
+
+/* Application Form */
+.apply-section{padding:5rem 1.5rem;position:relative;z-index:1}
+.apply-section h2{font-size:2rem;margin-bottom:1rem;text-align:center}
+.apply-section > p{color:var(--muted);margin-bottom:2rem;font-family:-apple-system,sans-serif;text-align:center;max-width:550px;margin-left:auto;margin-right:auto}
+.apply-form{max-width:600px;margin:0 auto}
+.form-group{margin-bottom:1.25rem}
+.form-group label{display:block;font-size:.85rem;color:var(--txt);margin-bottom:.4rem;font-weight:500;font-family:-apple-system,sans-serif}
+.form-group input,.form-group select,.form-group textarea{width:100%;padding:.7rem 1rem;background:var(--s2);border:1px solid var(--bdr);border-radius:8px;color:var(--txt);font-size:.9rem;font-family:-apple-system,sans-serif;transition:border-color .2s}
+.form-group input:focus,.form-group select:focus,.form-group textarea:focus{outline:none;border-color:var(--gold)}
+.form-group select{appearance:auto}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
+@media(max-width:768px){.form-row{grid-template-columns:1fr}}
 
 .cta{text-align:center;padding:5rem 1.5rem;position:relative;z-index:1}
 .cta h2{font-size:2rem;margin-bottom:1rem}
@@ -173,14 +183,117 @@ footer{padding:3rem 2rem;border-top:1px solid var(--bdr);text-align:center;posit
   </div>
 </section>
 
-<section id="join" class="cta">
-  <h2>Ready to Join the Club?</h2>
+<section id="join" class="apply-section">
+  <h2>Apply for HWC Membership</h2>
   <p>Membership is free. Access every halal financial product we offer. Start with a $5,000 down payment on your new home.</p>
-  <div class="hero-btns">
-    <a class="btn btn-gold" href="https://realestate.darcloud.host">Browse Properties</a>
-    <a class="btn btn-outline" href="https://darcloud.host">Back to DarCloud</a>
+  <div class="apply-form">
+    <form id="hwcForm" onsubmit="return handleHWCSubmit(event)">
+      <div class="form-row">
+        <div class="form-group">
+          <label for="fullName">Full Name *</label>
+          <input type="text" id="fullName" name="fullName" required placeholder="Your full name">
+        </div>
+        <div class="form-group">
+          <label for="email">Email Address *</label>
+          <input type="email" id="email" name="email" required placeholder="you@email.com">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label for="phone">Phone Number *</label>
+          <input type="tel" id="phone" name="phone" required placeholder="(555) 123-4567">
+        </div>
+        <div class="form-group">
+          <label for="city">Preferred City *</label>
+          <select id="city" name="city" required>
+            <option value="">Select a city...</option>
+            <option value="Dearborn, MI">Dearborn, MI</option>
+            <option value="Houston, TX">Houston, TX</option>
+            <option value="Dallas, TX">Dallas, TX</option>
+            <option value="Chicago, IL">Chicago, IL</option>
+            <option value="New York, NY">New York, NY</option>
+            <option value="Los Angeles, CA">Los Angeles, CA</option>
+            <option value="San Francisco, CA">San Francisco, CA</option>
+            <option value="Philadelphia, PA">Philadelphia, PA</option>
+            <option value="Detroit, MI">Detroit, MI</option>
+            <option value="Atlanta, GA">Atlanta, GA</option>
+            <option value="Washington, DC">Washington, DC</option>
+            <option value="Minneapolis, MN">Minneapolis, MN</option>
+            <option value="Columbus, OH">Columbus, OH</option>
+            <option value="Indianapolis, IN">Indianapolis, IN</option>
+            <option value="San Diego, CA">San Diego, CA</option>
+            <option value="Phoenix, AZ">Phoenix, AZ</option>
+            <option value="Tampa, FL">Tampa, FL</option>
+            <option value="Orlando, FL">Orlando, FL</option>
+            <option value="Raleigh, NC">Raleigh, NC</option>
+            <option value="Charlotte, NC">Charlotte, NC</option>
+            <option value="Nashville, TN">Nashville, TN</option>
+            <option value="Sacramento, CA">Sacramento, CA</option>
+            <option value="Portland, OR">Portland, OR</option>
+            <option value="Seattle, WA">Seattle, WA</option>
+            <option value="Denver, CO">Denver, CO</option>
+            <option value="Austin, TX">Austin, TX</option>
+            <option value="San Antonio, TX">San Antonio, TX</option>
+            <option value="Jacksonville, FL">Jacksonville, FL</option>
+            <option value="Bridgeview, IL">Bridgeview, IL</option>
+            <option value="Paterson, NJ">Paterson, NJ</option>
+            <option value="Brooklyn, NY">Brooklyn, NY</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label for="interest">Area of Interest *</label>
+        <select id="interest" name="interest" required>
+          <option value="">Select your interest...</option>
+          <option value="Home Loan">Home Loan</option>
+          <option value="Business Loan">Business Loan</option>
+          <option value="Checking Account">Checking Account</option>
+          <option value="Savings">Savings</option>
+          <option value="Construction Loan">Construction Loan</option>
+          <option value="General">General</option>
+        </select>
+      </div>
+      <button type="submit" class="btn btn-gold" id="hwcSubmitBtn" style="width:100%;text-align:center;cursor:pointer">Submit Application</button>
+    </form>
+    <div id="hwcError" style="display:none;color:#ef4444;margin-top:1rem;text-align:center;font-size:.9rem"></div>
+    <div id="hwcSuccess" style="display:none;color:#10b981;margin-top:1rem;text-align:center;font-size:.9rem"></div>
   </div>
 </section>
+
+<script>
+async function handleHWCSubmit(e) {
+  e.preventDefault();
+  var btn = document.getElementById('hwcSubmitBtn');
+  var error = document.getElementById('hwcError');
+  var success = document.getElementById('hwcSuccess');
+  error.style.display='none'; success.style.display='none';
+  btn.textContent='Submitting...'; btn.disabled=true;
+  try {
+    var formData = {
+      fullName: document.getElementById('fullName').value,
+      email: document.getElementById('email').value,
+      phone: document.getElementById('phone').value,
+      city: document.getElementById('city').value,
+      interest: document.getElementById('interest').value,
+      source: 'hwc-landing'
+    };
+    var res = await fetch('https://darcloud.host/api/hwc/apply', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(formData)
+    });
+    var data = await res.json();
+    if(!res.ok) throw new Error(data.error || 'Submission failed');
+    success.textContent = data.message || 'Application received! We will contact you within 48 hours. As-salamu alaykum.';
+    success.style.display='block';
+    document.getElementById('hwcForm').reset();
+  } catch(err) {
+    error.textContent = err.message || 'Something went wrong. Please try again.';
+    error.style.display='block';
+  }
+  btn.textContent='Submit Application'; btn.disabled=false;
+  return false;
+}
+</script>
 
 <footer>
   <div class="footer-links">
@@ -217,6 +330,3 @@ var src_default = {
 export {
   src_default as default
 };
-//# sourceMappingURL=index.js.map
-
---773246815472cc3359f9aa1d3b3774c5ba1550b01f54a58845802686ead9--

@@ -22,7 +22,7 @@ execution_ms: number;
 expect(response.status).toBe(200);
 expect(body.success).toBe(true);
 expect(body.status).toMatch(/healthy|degraded|unhealthy/);
-expect(body.version).toBe("5.3.0");
+expect(body.version).toBe("5.4.0");
 expect(body.components.database.status).toBe("up");
 expect(body.execution_ms).toBeGreaterThanOrEqual(0);
 });

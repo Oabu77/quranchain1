@@ -1,6 +1,3 @@
---c77770258d1c8550ee4358df095c7adf761f2f98e39dee71878d265e2984
-Content-Disposition: form-data; name="index.js"
-
 // src/index.js
 var CORS = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET,POST,OPTIONS", "Access-Control-Allow-Headers": "Content-Type" };
 var LANDING = `<!DOCTYPE html>
@@ -95,7 +92,7 @@ footer{padding:3rem 2rem;border-top:1px solid var(--bdr);text-align:center;backg
     <a href="https://enterprise.darcloud.host">Enterprise</a>
     <a href="https://api.darcloud.host/api">API</a>
   </div>
-  <a class="btn btn-primary" href="https://halalwealthclub.darcloud.host">Get Started</a>
+  <a class="btn btn-primary" href="https://darcloud.host/signup">Get Started</a>
 </nav>
 
 <section class="hero">
@@ -103,7 +100,7 @@ footer{padding:3rem 2rem;border-top:1px solid var(--bdr);text-align:center;backg
   <h1>Cloud Infrastructure <span class="highlight">for Everyone</span></h1>
   <p>Shariah-compliant cloud computing, AI, blockchain, and mesh networking \u2014 built for the global Muslim digital economy.</p>
   <div class="hero-btns">
-    <a class="btn btn-primary" href="https://halalwealthclub.darcloud.host">Create Account</a>
+    <a class="btn btn-primary" href="https://darcloud.host/signup">Create Account</a>
     <a class="btn btn-outline" href="https://darcloud.host">Explore Platform</a>
   </div>
 </section>
@@ -181,7 +178,7 @@ footer{padding:3rem 2rem;border-top:1px solid var(--bdr);text-align:center;backg
           <li>Basic Mesh Access</li>
           <li>Community Support</li>
         </ul>
-        <a class="btn btn-outline" href="https://halalwealthclub.darcloud.host">Start Free</a>
+        <a class="btn btn-outline" href="https://darcloud.host/signup?plan=starter">Start Free</a>
       </div>
       <div class="compare-card featured">
         <h3>Professional</h3>
@@ -193,7 +190,7 @@ footer{padding:3rem 2rem;border-top:1px solid var(--bdr);text-align:center;backg
           <li>Priority Support</li>
           <li>HWC Membership</li>
         </ul>
-        <a class="btn btn-primary" href="https://halalwealthclub.darcloud.host">Get Pro</a>
+        <a class="btn btn-primary" href="https://darcloud.host/checkout/pro">Get Pro</a>
       </div>
       <div class="compare-card">
         <h3>Enterprise</h3>
@@ -215,7 +212,7 @@ footer{padding:3rem 2rem;border-top:1px solid var(--bdr);text-align:center;backg
   <h2>Build Something Halal</h2>
   <p>Join thousands of businesses already running on DarCloud's Shariah-compliant infrastructure.</p>
   <div class="hero-btns">
-    <a class="btn btn-primary" href="https://halalwealthclub.darcloud.host">Get Started Free</a>
+    <a class="btn btn-primary" href="https://darcloud.host/signup">Get Started Free</a>
     <a class="btn btn-outline" href="https://api.darcloud.host/api">Read the Docs</a>
   </div>
 </section>
@@ -248,6 +245,3 @@ var src_default = {
 export {
   src_default as default
 };
-//# sourceMappingURL=index.js.map
-
---c77770258d1c8550ee4358df095c7adf761f2f98e39dee71878d265e2984--

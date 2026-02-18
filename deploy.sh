@@ -42,7 +42,7 @@ npx tsc --noEmit && echo "✓ No type errors" || { echo "✗ TypeScript errors f
 # Step 2: Apply D1 migrations remotely
 echo ""
 echo "─── [2/5] D1 Migrations ───"
-echo "y" | npx wrangler d1 migrations apply openapi-template-db --remote 2>&1 && echo "✓ Migrations applied" || echo "⚠ Migration failed (may already be applied)"
+echo "y" | npx wrangler d1 migrations apply DB --remote 2>&1 && echo "✓ Migrations applied" || echo "⚠ Migration failed (may already be applied)"
 
 # Step 3: Deploy Worker
 echo ""
