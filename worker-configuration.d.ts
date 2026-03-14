@@ -8,6 +8,8 @@ declare namespace Cloudflare {
 	interface Env {
 		DB: D1Database;
 		JWT_SECRET?: string;
+		STRIPE_SECRET_KEY?: string;
+		STRIPE_WEBHOOK_SECRET?: string;
 	}
 }
 interface Env extends Cloudflare.Env {}

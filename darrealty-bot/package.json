@@ -1,0 +1,14 @@
+{
+  "name": "darrealty-bot",
+  "version": "1.0.0",
+  "description": "Dar Realty™ — Real Estate, Smart Cities & Construction",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js",
+    "register": "node register-commands.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.18.0",
+    "dotenv": "^16.4.7"
+  }
+}

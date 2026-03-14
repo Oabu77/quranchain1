@@ -99,8 +99,9 @@ footer{padding:3rem 2rem;border-top:1px solid var(--bdr);text-align:center}
     <a href="#pricing">Pricing</a>
     <a href="https://darcloud.host">Platform</a>
     <a href="https://api.darcloud.host/api">API</a>
-  </div>
+  <a href="https://darcloud.host/login" style="color:var(--cyan)">Sign In</a></div>
   <a class="btn btn-blue" href="#contact">Contact Sales</a>
+    <a href="https://discord.gg/darcloud" target="_blank" rel="noopener">Discord</a>
 </nav>
 
 <section class="hero">
@@ -285,6 +286,8 @@ async function handleSubmit(e) {
     <a href="https://realestate.darcloud.host">Real Estate</a>
   </div>
   <p class="footer-copy">\xA9 2026 DarCloud Enterprise by Omar Abu Nadi. All rights reserved. Shariah-compliant infrastructure.</p>
+
+  <div class="footer-legal" style="margin-top:.75rem;font-size:.8rem"><a href="https://darcloud.host/privacy">Privacy Policy</a> · <a href="https://darcloud.host/terms">Terms of Service</a> · <a href="https://discord.gg/darcloud" target="_blank" rel="noopener">Join our Discord</a></div>
 </footer>
 
 </body></html>`;

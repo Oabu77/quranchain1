@@ -101,8 +101,9 @@ footer{padding:3rem 2rem;border-top:1px solid var(--bdr);text-align:center;posit
     <a href="#services">Services</a>
     <a href="https://realestate.darcloud.host">Real Estate</a>
     <a href="https://darcloud.host">DarCloud</a>
-  </div>
+  <a href="https://darcloud.host/login" style="color:var(--cyan)">Sign In</a></div>
   <a class="btn btn-gold" href="#join">Apply for Membership</a>
+    <a href="https://discord.gg/darcloud" target="_blank" rel="noopener">Discord</a>
 </nav>
 
 <section class="hero">
@@ -304,6 +305,8 @@ async function handleHWCSubmit(e) {
     <a href="https://enterprise.darcloud.host">Enterprise</a>
   </div>
   <p class="footer-copy">\xA9 2026 Halal Wealth Club by Omar Abu Nadi. Private Membership Fund. 30% Founder Royalty Immutable.<br>\u0628\u0650\u0633\u0652\u0645\u0650 \u0627\u0644\u0644\u064E\u0651\u0647\u0650 \u0627\u0644\u0631\u064E\u0651\u062D\u0652\u0645\u064E\u0646\u0650 \u0627\u0644\u0631\u064E\u0651\u062D\u0650\u064A\u0645\u0650</p>
+
+  <div class="footer-legal" style="margin-top:.75rem;font-size:.8rem"><a href="https://darcloud.host/privacy">Privacy Policy</a> · <a href="https://darcloud.host/terms">Terms of Service</a> · <a href="https://discord.gg/darcloud" target="_blank" rel="noopener">Join our Discord</a></div>
 </footer>
 
 </body></html>`;

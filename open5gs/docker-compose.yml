@@ -1,0 +1,321 @@
+# ==========================================================
+# DarTelecom™ / MeshTalk™ — Open5GS 5G Core Network
+# Complete ISP Stack: EPC + 5GC + WebUI
+# ==========================================================
+version: "3.9"
+
+x-open5gs-common: &open5gs-common
+  restart: unless-stopped
+  networks:
+    - open5gs-net
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+services:
+  # ═══════════════════════════════════════════════
+  # MongoDB — Subscriber Database
+  # ═══════════════════════════════════════════════
+  mongodb:
+    image: mongo:7
+    container_name: open5gs-mongodb
+    hostname: mongodb
+    <<: *open5gs-common
+    volumes:
+      - mongodb-data:/data/db
+      - mongodb-config:/data/configdb
+    ports:
+      - "27017:27017"
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ═══════════════════════════════════════════════
+  # Open5GS WebUI — Subscriber Management Portal
+  # ═══════════════════════════════════════════════
+  webui:
+    image: openverso/open5gs-webui:2.7.2
+    container_name: open5gs-webui
+    hostname: webui
+    <<: *open5gs-common
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    environment:
+      - DB_URI=mongodb://mongodb/open5gs
+      - HOSTNAME=0.0.0.0
+      - NODE_ENV=production
+    ports:
+      - "9999:9999"
+
+  # ═══════════════════════════════════════════════
+  # 5G Core Network Functions (5GC)
+  # ═══════════════════════════════════════════════
+
+  # NRF — Network Repository Function (service discovery)
+  nrf:
+    image: openverso/open5gs-nrf:2.7.2
+    container_name: open5gs-nrf
+    hostname: nrf
+    <<: *open5gs-common
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    volumes:
+      - ./config/nrf.yaml:/opt/open5gs/etc/open5gs/nrf.yaml
+    ports:
+      - "7777:7777"
+
+  # SCP — Service Communication Proxy
+  scp:
+    image: openverso/open5gs-scp:2.7.2
+    container_name: open5gs-scp
+    hostname: scp
+    <<: *open5gs-common
+    depends_on:
+      - nrf
+    volumes:
+      - ./config/scp.yaml:/opt/open5gs/etc/open5gs/scp.yaml
+
+  # AMF — Access and Mobility Management Function
+  amf:
+    image: openverso/open5gs-amf:2.7.2
+    container_name: open5gs-amf
+    hostname: amf
+    <<: *open5gs-common
+    depends_on:
+      - nrf
+      - scp
+    volumes:
+      - ./config/amf.yaml:/opt/open5gs/etc/open5gs/amf.yaml
+    ports:
+      - "38412:38412/sctp"
+
+  # SMF — Session Management Function
+  smf:
+    image: openverso/open5gs-smf:2.7.2
+    container_name: open5gs-smf
+    hostname: smf
+    <<: *open5gs-common
+    depends_on:
+      - nrf
+      - scp
+    volumes:
+      - ./config/smf.yaml:/opt/open5gs/etc/open5gs/smf.yaml
+    ports:
+      - "8805:8805/udp"
+
+  # UPF — User Plane Function (data forwarding)
+  upf:
+    image: openverso/open5gs-upf:2.7.2
+    container_name: open5gs-upf
+    hostname: upf
+    <<: *open5gs-common
+    depends_on:
+      - nrf
+      - smf
+    volumes:
+      - ./config/upf.yaml:/opt/open5gs/etc/open5gs/upf.yaml
+    ports:
+      - "2152:2152/udp"
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+
+  # AUSF — Authentication Server Function
+  ausf:
+    image: openverso/open5gs-ausf:2.7.2
+    container_name: open5gs-ausf
+    hostname: ausf
+    <<: *open5gs-common
+    depends_on:
+      - nrf
+    volumes:
+      - ./config/ausf.yaml:/opt/open5gs/etc/open5gs/ausf.yaml
+
+  # UDM — Unified Data Management
+  udm:
+    image: openverso/open5gs-udm:2.7.2
+    container_name: open5gs-udm
+    hostname: udm
+    <<: *open5gs-common
+    depends_on:
+      - nrf
+    volumes:
+      - ./config/udm.yaml:/opt/open5gs/etc/open5gs/udm.yaml
+
+  # UDR — Unified Data Repository
+  udr:
+    image: openverso/open5gs-udr:2.7.2
+    container_name: open5gs-udr
+    hostname: udr
+    <<: *open5gs-common
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      - nrf
+    volumes:
+      - ./config/udr.yaml:/opt/open5gs/etc/open5gs/udr.yaml
+
+  # PCF — Policy Control Function
+  pcf:
+    image: openverso/open5gs-pcf:2.7.2
+    container_name: open5gs-pcf
+    hostname: pcf
+    <<: *open5gs-common
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      - nrf
+    volumes:
+      - ./config/pcf.yaml:/opt/open5gs/etc/open5gs/pcf.yaml
+
+  # NSSF — Network Slice Selection Function
+  nssf:
+    image: openverso/open5gs-nssf:2.7.2
+    container_name: open5gs-nssf
+    hostname: nssf
+    <<: *open5gs-common
+    depends_on:
+      - nrf
+    volumes:
+      - ./config/nssf.yaml:/opt/open5gs/etc/open5gs/nssf.yaml
+
+  # BSF — Binding Support Function
+  bsf:
+    image: openverso/open5gs-bsf:2.7.2
+    container_name: open5gs-bsf
+    hostname: bsf
+    <<: *open5gs-common
+    depends_on:
+      - nrf
+    volumes:
+      - ./config/bsf.yaml:/opt/open5gs/etc/open5gs/bsf.yaml
+
+  # ═══════════════════════════════════════════════
+  # 4G EPC Functions (LTE backward compatibility)
+  # ═══════════════════════════════════════════════
+
+  # HSS — Home Subscriber Server (4G auth)
+  hss:
+    image: openverso/open5gs-hss:2.7.2
+    container_name: open5gs-hss
+    hostname: hss
+    <<: *open5gs-common
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      - nrf
+    volumes:
+      - ./config/hss.yaml:/opt/open5gs/etc/open5gs/hss.yaml
+
+  # MME — Mobility Management Entity (4G)
+  mme:
+    image: openverso/open5gs-mme:2.7.2
+    container_name: open5gs-mme
+    hostname: mme
+    <<: *open5gs-common
+    depends_on:
+      - hss
+      - nrf
+      - scp
+    volumes:
+      - ./config/mme.yaml:/opt/open5gs/etc/open5gs/mme.yaml
+    ports:
+      - "36412:36412/sctp"
+
+  # SGW-C — Serving Gateway Control Plane (4G)
+  sgwc:
+    image: openverso/open5gs-sgwc:2.7.2
+    container_name: open5gs-sgwc
+    hostname: sgwc
+    <<: *open5gs-common
+    depends_on:
+      - nrf
+    volumes:
+      - ./config/sgwc.yaml:/opt/open5gs/etc/open5gs/sgwc.yaml
+
+  # SGW-U — Serving Gateway User Plane (4G)
+  sgwu:
+    image: openverso/open5gs-sgwu:2.7.2
+    container_name: open5gs-sgwu
+    hostname: sgwu
+    <<: *open5gs-common
+    depends_on:
+      - nrf
+    volumes:
+      - ./config/sgwu.yaml:/opt/open5gs/etc/open5gs/sgwu.yaml
+    ports:
+      - "2153:2152/udp"
+    cap_add:
+      - NET_ADMIN
+
+  # ═══════════════════════════════════════════════
+  # UERANSIM — 5G UE + gNodeB Simulator
+  # ═══════════════════════════════════════════════
+  gnb:
+    image: openverso/ueransim-gnb:3.2.6
+    container_name: ueransim-gnb
+    hostname: gnb
+    <<: *open5gs-common
+    depends_on:
+      - amf
+      - upf
+    volumes:
+      - ./config/gnb.yaml:/opt/UERANSIM/config/gnb.yaml
+    cap_add:
+      - NET_ADMIN
+
+  ue:
+    image: openverso/ueransim-ue:3.2.6
+    container_name: ueransim-ue
+    hostname: ue
+    <<: *open5gs-common
+    depends_on:
+      - gnb
+    volumes:
+      - ./config/ue.yaml:/opt/UERANSIM/config/ue.yaml
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+
+  # ═══════════════════════════════════════════════
+  # DarTelecom ISP Controller
+  # ═══════════════════════════════════════════════
+  isp-controller:
+    build:
+      context: ./isp-controller
+      dockerfile: Dockerfile
+    container_name: dartelecom-isp-controller
+    hostname: isp-controller
+    <<: *open5gs-common
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      - webui
+    environment:
+      MONGO_URI: mongodb://mongodb:27017/open5gs
+      ISP_PORT: 3000
+      STRIPE_KEY: ${STRIPE_KEY}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
+      API_BASE: https://darcloud.host
+      NODE_ENV: production
+    ports:
+      - "3000:3000"
+
+networks:
+  open5gs-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.11.0.0/16
+
+volumes:
+  mongodb-data:
+  mongodb-config:

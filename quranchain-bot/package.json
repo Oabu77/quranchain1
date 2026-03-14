@@ -1,0 +1,14 @@
+{
+  "name": "quranchain-discord-bot",
+  "version": "1.0.0",
+  "description": "QuranChain™ Blockchain Discord Bot — 47 chains, QRN economy, Islamic knowledge games",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js",
+    "register": "node register-commands.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.18.0",
+    "better-sqlite3": "^11.7.0"
+  }
+}

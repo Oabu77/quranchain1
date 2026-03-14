@@ -293,7 +293,7 @@ auth.post("/auth/login", async (c) => {
   }
 });
 
-// POST /api/checkout/session — Create a checkout session
+// POST /api/checkout/session — Create a real Stripe checkout session
 auth.post("/checkout/session", async (c) => {
   const start = Date.now();
   try {
@@ -303,49 +303,78 @@ auth.post("/checkout/session", async (c) => {
       email?: string;
       name?: string;
       plan?: string;
+      discord_id?: string;
     }>();
-    const { email, name, plan } = body;
+    const { email, name, plan, discord_id } = body;
 
     if (!email || !plan) {
       return c.json({ error: "Email and plan are required" }, 400);
     }
 
-    const prices: Record<string, { amount: number; label: string }> = {
-      pro: { amount: 4900, label: "DarCloud Professional" },
-      startup: { amount: 49900, label: "DarCloud Enterprise Startup" },
-      business: { amount: 199900, label: "DarCloud Enterprise Business" },
+    const plans: Record<string, { amount: number; label: string; price_id: string; mode: string }> = {
+      pro: { amount: 4900, label: "DarCloud Professional", price_id: "price_1TAR0SAqs2ifkfkqOKa2Rzq3", mode: "subscription" },
+      enterprise: { amount: 49900, label: "DarCloud Enterprise", price_id: "price_1TAR0TAqs2ifkfkqdtr8kWEf", mode: "subscription" },
+      startup: { amount: 49900, label: "DarCloud Enterprise", price_id: "price_1TAR0TAqs2ifkfkqdtr8kWEf", mode: "subscription" },
+      fungimesh: { amount: 1999, label: "FungiMesh Node", price_id: "price_1TAR0TAqs2ifkfkqqrjzoLdm", mode: "subscription" },
+      hwc: { amount: 9900, label: "HWC Premium", price_id: "price_1TAR0TAqs2ifkfkqKFPTW7hM", mode: "subscription" },
     };
 
-    const selected = prices[plan];
+    const selected = plans[plan];
     if (!selected) {
-      return c.json(
-        {
-          message: `Plan "${plan}" registered. Our team will contact you for custom pricing.`,
-          plan,
-          email,
-        },
-        200,
-      );
+      return c.json({
+        message: `Plan "${plan}" registered. Our team will contact you for custom pricing.`,
+        plan, email,
+      }, 200);
     }
 
     // Record the checkout intent in D1
-    await db
-      .prepare(
-        "UPDATE users SET plan = ?, updated_at = datetime('now') WHERE email = ?",
-      )
-      .bind(plan, email.toLowerCase())
-      .run();
+    await db.prepare(
+      "UPDATE users SET plan = ?, updated_at = datetime('now') WHERE email = ?",
+    ).bind(plan, email.toLowerCase()).run();
 
-    // DarPay™ white-label checkout — Stripe processes on backend, DarPay branding on frontend
+    // Create real Stripe Checkout Session
+    const stripeKey = c.env.STRIPE_SECRET_KEY;
+    if (stripeKey) {
+      const params = new URLSearchParams();
+      params.append("mode", selected.mode);
+      params.append("line_items[0][price]", selected.price_id);
+      params.append("line_items[0][quantity]", "1");
+      params.append("customer_email", email);
+      params.append("success_url", "https://darcloud.host/checkout/success?session_id={CHECKOUT_SESSION_ID}");
+      params.append("cancel_url", "https://darcloud.host/checkout/cancel");
+      params.append("metadata[product]", plan);
+      if (discord_id) params.append("metadata[discord_id]", discord_id);
+
+      const stripeRes = await fetch("https://api.stripe.com/v1/checkout/sessions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${stripeKey}`,
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: params.toString(),
+      });
+      const session = await stripeRes.json() as any;
+      if (!session.error && session.url) {
+        return c.json({
+          success: true,
+          session_id: session.id,
+          checkout_url: session.url,
+          plan: selected.label,
+          amount: selected.amount,
+          currency: "usd",
+          payment_processor: "DarPay™ × Stripe",
+          execution_ms: Date.now() - start,
+        });
+      }
+    }
+
+    // Fallback if Stripe not configured
     return c.json({
       success: true,
       message: `${selected.label} subscription initiated via DarPay™.`,
-      plan,
-      amount: selected.amount,
-      currency: "usd",
+      plan, amount: selected.amount, currency: "usd",
       payment_processor: "DarPay™",
-      checkout_url: `https://pay.darcloud.host/checkout/${plan}`,
-      note: "DarPay™ — Halal payments powered by DarCloud. Plan recorded in database.",
+      checkout_url: `https://darcloud.host/checkout/${plan}`,
       execution_ms: Date.now() - start,
     });
   } catch (err: unknown) {

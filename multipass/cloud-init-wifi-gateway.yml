@@ -1,0 +1,155 @@
+#cloud-config
+# DarCloud FungiMesh WiFi Gateway — Cloud-Init
+# Deploys B.A.T.M.A.N. + WireGuard + hostapd mesh gateway on Multipass VMs
+
+users:
+  - name: quranchain
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    groups: [sudo, docker, netdev]
+    shell: /bin/bash
+
+package_update: true
+package_upgrade: true
+
+packages:
+  - curl
+  - jq
+  - wireguard
+  - wireguard-tools
+  - batctl
+  - hostapd
+  - dnsmasq
+  - bridge-utils
+  - nftables
+  - iw
+  - wireless-tools
+  - python3
+  - python3-flask
+  - python3-requests
+  - net-tools
+  - iperf3
+  - tcpdump
+  - git
+  - ufw
+
+write_files:
+  - path: /etc/modules-load.d/batman-adv.conf
+    content: |
+      batman-adv
+
+  - path: /etc/sysctl.d/99-fungimesh.conf
+    content: |
+      net.ipv4.ip_forward=1
+      net.ipv6.conf.all.forwarding=1
+
+  - path: /etc/fungimesh/gateway.conf
+    content: |
+      [gateway]
+      node_id = fungi-gw-HOSTNAME
+      role = gateway
+      batman_gw_mode = server
+      mesh_ssid = FungiMesh-Backhaul
+      ap_ssid = DarCloud-WiFi
+      channel = 6
+      
+      [wireguard]
+      listen_port = 51820
+      mesh_subnet = 10.77.0.0/16
+      
+      [network]
+      client_subnet = 10.78.0.0/24
+      gateway_ip = 10.78.0.1
+      
+      [api]
+      darcloud_api = https://darcloud.host
+      heartbeat_interval = 30
+
+  - path: /opt/fungimesh/setup-mesh.sh
+    permissions: "0755"
+    content: |
+      #!/bin/bash
+      set -e
+      NODE_ID="fungi-gw-$(hostname)"
+      
+      # Load batman-adv
+      modprobe batman-adv 2>/dev/null || true
+      
+      # WireGuard
+      WG_PRIVKEY=$(wg genkey)
+      WG_PUBKEY=$(echo "$WG_PRIVKEY" | wg pubkey)
+      HASH=$(echo -n "$NODE_ID" | md5sum | head -c 4)
+      O3=$(( 16#${HASH:0:2} % 254 + 1 ))
+      O4=$(( 16#${HASH:2:2} % 254 + 1 ))
+      WG_IP="10.77.${O3}.${O4}"
+      
+      cat > /etc/wireguard/wg-fungi.conf <<EOF
+      [Interface]
+      PrivateKey = ${WG_PRIVKEY}
+      Address = ${WG_IP}/16
+      ListenPort = 51820
+      PostUp = sysctl -w net.ipv4.ip_forward=1
+      EOF
+      
+      wg-quick up wg-fungi 2>/dev/null || true
+      
+      # Bridge
+      ip link add br-mesh type bridge 2>/dev/null || true
+      ip link set br-mesh up
+      ip addr add 10.78.0.1/24 dev br-mesh 2>/dev/null || true
+      
+      # NAT
+      INET=$(ip route show default | head -1 | awk '{print $5}')
+      iptables -t nat -A POSTROUTING -o "$INET" -j MASQUERADE
+      iptables -A FORWARD -i br-mesh -j ACCEPT
+      iptables -A FORWARD -m state --state RELATED,ESTABLISHED -j ACCEPT
+      
+      # Register
+      curl -sf -X POST "https://darcloud.host/wifi/register" \
+        -H "Content-Type: application/json" \
+        -d "{\"node_id\":\"${NODE_ID}\",\"hardware\":\"multipass-vm\",\"wireguard_pubkey\":\"${WG_PUBKEY}\",\"wireguard_ip\":\"${WG_IP}\"}" || true
+      
+      echo "$(date) FungiMesh gateway setup complete: $NODE_ID @ $WG_IP" >> /var/log/fungimesh/setup.log
+
+  - path: /etc/systemd/system/fungimesh-gateway.service
+    content: |
+      [Unit]
+      Description=DarCloud FungiMesh WiFi Gateway
+      After=network.target
+      
+      [Service]
+      Type=simple
+      Environment=NODE_ID=fungi-gw-HOSTNAME
+      Environment=DARCLOUD_API=https://darcloud.host
+      Environment=HEALTH_PORT=8080
+      Environment=PORTAL_PORT=8888
+      Environment=HEARTBEAT_SEC=30
+      ExecStartPre=/opt/fungimesh/setup-mesh.sh
+      ExecStart=/usr/bin/python3 /opt/fungimesh/gateway-server.py
+      Restart=always
+      RestartSec=5
+      
+      [Install]
+      WantedBy=multi-user.target
+
+runcmd:
+  - mkdir -p /etc/fungimesh /opt/fungimesh /var/log/fungimesh /var/lib/misc
+  - sed -i "s/HOSTNAME/$(hostname)/g" /etc/fungimesh/gateway.conf
+  - sed -i "s/HOSTNAME/$(hostname)/g" /etc/systemd/system/fungimesh-gateway.service
+  - sysctl -p /etc/sysctl.d/99-fungimesh.conf
+  - |
+    # Download gateway server from repo
+    curl -sf "https://raw.githubusercontent.com/omarabunadi/quranchain1/main/docker/fungimesh-gateway/gateway-server.py" \
+      -o /opt/fungimesh/gateway-server.py 2>/dev/null || \
+    curl -sf "https://darcloud.host/mesh/gateway-server.py" \
+      -o /opt/fungimesh/gateway-server.py 2>/dev/null || \
+    echo "Gateway server will need manual deployment"
+  - chmod +x /opt/fungimesh/gateway-server.py 2>/dev/null || true
+  - ufw allow 22/tcp
+  - ufw allow 8080/tcp
+  - ufw allow 8888/tcp
+  - ufw allow 51820/udp
+  - ufw --force enable
+  - systemctl daemon-reload
+  - systemctl enable fungimesh-gateway
+  - systemctl start fungimesh-gateway
+  - echo "FungiMesh WiFi Gateway deployed: $(hostname)" >> /var/log/fungimesh/deploy.log

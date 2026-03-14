@@ -103,6 +103,7 @@ footer{padding:3rem 2rem;border-top:1px solid var(--bdr);text-align:center}
     <a href="https://halalwealthclub.darcloud.host">HWC</a>
     <a href="https://realestate.darcloud.host">Real Estate</a>
     <a href="https://darcloud.net">DarCloud.net</a>
+    <a href="https://discord.gg/darcloud" target="_blank" rel="noopener">Discord</a>
     <a href="https://darcloud.host/login">Sign In</a>
   </div>
   <a class="btn btn-primary" href="https://darcloud.host/signup">Get Started</a>
@@ -187,15 +188,15 @@ footer{padding:3rem 2rem;border-top:1px solid var(--bdr);text-align:center}
       <div class="eco-item"><div class="eco-icon">\u26A1</div><div>Quantum Computing<br><span>quantum.darcloud.host</span></div></div>
       <div class="eco-item"><div class="eco-icon">\u{1F30A}</div><div>Ocean Protocol<br><span>ocean.darcloud.host</span></div></div>
       <div class="eco-item"><div class="eco-icon">\u{1F3AE}</div><div>Islamic Gaming<br><span>gaming.darcloud.host</span></div></div>
-      <div class="eco-item"><div class="eco-icon">\u{1F4E1}</div><div>5G Core Network<br><span>5g.darcloud.host</span></div></div>
+      <a href="https://telecom.darcloud.host" class="eco-item" style="text-decoration:none;color:inherit"><div class="eco-icon">\u{1F4E1}</div><div>5G & Telecom<br><span>telecom.darcloud.host</span></div></a>
       <div class="eco-item"><div class="eco-icon">\u{1F517}</div><div>MCP Protocol<br><span>mcp.darcloud.host</span></div></div>
-      <div class="eco-item"><div class="eco-icon">\u{1F4B3}</div><div>DarPay Payments<br><span>payments.darcloud.host</span></div></div>
+      <a href="https://pay.darcloud.host" class="eco-item" style="text-decoration:none;color:inherit"><div class="eco-icon">\u{1F4B3}</div><div>DarPay Payments<br><span>pay.darcloud.host</span></div></a>
       <div class="eco-item"><div class="eco-icon">\u{1F4CA}</div><div>Analytics Engine<br><span>analytics.darcloud.host</span></div></div>
-      <div class="eco-item"><div class="eco-icon">\u{1F6E1}\uFE0F</div><div>Vault & Secrets<br><span>vault.darcloud.host</span></div></div>
+      <a href="https://security.darcloud.host" class="eco-item" style="text-decoration:none;color:inherit"><div class="eco-icon">\u{1F6E1}\uFE0F</div><div>Security & Vault<br><span>security.darcloud.host</span></div></a>
       <div class="eco-item"><div class="eco-icon">\u{1F310}</div><div>CDN Network<br><span>cdn.darcloud.host</span></div></div>
       <div class="eco-item"><div class="eco-icon">\u{1F4E6}</div><div>IPFS Storage<br><span>ipfs.darcloud.host</span></div></div>
-      <div class="eco-item"><div class="eco-icon">\u{1F4F1}</div><div>MeshTalk Comms<br><span>meshtalk.darcloud.host</span></div></div>
-      <div class="eco-item"><div class="eco-icon">\u{1F3E6}</div><div>Revenue Engine<br><span>revenue.darcloud.host</span></div></div>
+      <a href="https://meshtalk.darcloud.host" class="eco-item" style="text-decoration:none;color:inherit"><div class="eco-icon">\u{1F4F1}</div><div>MeshTalk Comms<br><span>meshtalk.darcloud.host</span></div></a>
+      <a href="https://revenue.darcloud.host" class="eco-item" style="text-decoration:none;color:inherit"><div class="eco-icon">\u{1F3E6}</div><div>Revenue Engine<br><span>revenue.darcloud.host</span></div></a>
     </div>
     <div class="revenue-bar">
       <div class="rev-item"><b>30%</b> Founder</div>
@@ -207,11 +208,36 @@ footer{padding:3rem 2rem;border-top:1px solid var(--bdr);text-align:center}
   </div>
 </section>
 
+<section style="padding:4rem 2rem;background:var(--s1);text-align:center">
+  <h2 style="font-size:2rem;margin-bottom:.5rem">Join the <span style="background:var(--grad1);-webkit-background-clip:text;-webkit-text-fill-color:transparent">DarCloud Community</span></h2>
+  <p style="color:var(--muted);max-width:600px;margin:0 auto 2rem;font-size:1.05rem">Connect with builders, entrepreneurs, and the Ummah on Discord. Get support, share ideas, and shape the future of Islamic technology.</p>
+  <div style="display:flex;gap:2rem;justify-content:center;flex-wrap:wrap;margin-bottom:2rem">
+    <div style="text-align:center"><div style="font-size:2rem;font-weight:800;color:var(--cyan)">1,000+</div><div style="color:var(--muted);font-size:.85rem">Community Members</div></div>
+    <div style="text-align:center"><div style="font-size:2rem;font-weight:800;color:var(--emerald)">22</div><div style="color:var(--muted);font-size:.85rem">Active Bots</div></div>
+    <div style="text-align:center"><div style="font-size:2rem;font-weight:800;color:var(--gold)">24/7</div><div style="color:var(--muted);font-size:.85rem">AI Support</div></div>
+  </div>
+  <a class="btn btn-primary" href="https://discord.gg/darcloud" target="_blank" rel="noopener" style="display:inline-block;padding:1rem 2.5rem;font-size:1.1rem">\uD83D\uDCAC Join DarCloud Discord</a>
+</section>
+
 <section class="cta">
   <h2>Ready to Build on DarCloud?</h2>
   <p>Join the Halal Wealth Club for exclusive access to all services, or explore our API to start integrating.</p>
+  <div style="display:flex;gap:1rem;justify-content:center;flex-wrap:wrap;margin-bottom:2rem">
+    <div style="background:var(--s2);border:1px solid var(--bdr);border-radius:12px;padding:1.5rem;text-align:center;min-width:200px">
+      <div style="font-size:1.8rem;font-weight:800;color:var(--cyan)">$49<span style="font-size:.9rem;color:var(--muted)">/mo</span></div>
+      <div style="font-weight:600;margin:.5rem 0">Professional</div>
+      <div style="font-size:.85rem;color:var(--muted);margin-bottom:1rem">Mesh Node + Wallet + Email</div>
+      <a class="btn btn-primary" href="https://darcloud.host/checkout/pro" style="display:block">Get Pro</a>
+    </div>
+    <div style="background:var(--s2);border:2px solid var(--gold);border-radius:12px;padding:1.5rem;text-align:center;min-width:200px">
+      <div style="font-size:1.8rem;font-weight:800;color:var(--gold)">$499<span style="font-size:.9rem;color:var(--muted)">/mo</span></div>
+      <div style="font-weight:600;margin:.5rem 0">Enterprise</div>
+      <div style="font-size:.85rem;color:var(--muted);margin-bottom:1rem">Cluster + SLA + White-Label</div>
+      <a class="btn btn-primary" href="https://darcloud.host/checkout/enterprise" style="display:block;background:linear-gradient(135deg,var(--gold),#ef4444)">Get Enterprise</a>
+    </div>
+  </div>
   <div class="hero-btns">
-    <a class="btn btn-primary" href="https://darcloud.host/signup">Create Account</a>
+    <a class="btn btn-primary" href="https://darcloud.host/signup">Create Free Account</a>
     <a class="btn btn-outline" href="https://api.darcloud.host/api">API Documentation</a>
     <a class="btn btn-outline" href="https://darcloud.net">Visit DarCloud.net</a>
   </div>
@@ -228,6 +254,9 @@ footer{padding:3rem 2rem;border-top:1px solid var(--bdr);text-align:center}
     <a href="https://halalwealthclub.darcloud.host">HWC</a>
     <a href="https://realestate.darcloud.host">Real Estate</a>
     <a href="https://api.darcloud.host/api">API</a>
+    <a href="https://discord.gg/darcloud" target="_blank" rel="noopener">Discord</a>
+    <a href="https://darcloud.host/privacy">Privacy</a>
+    <a href="https://darcloud.host/terms">Terms</a>
   </div>
   <p class="footer-copy">\xA9 2026 DarCloud by Omar Abu Nadi. All rights reserved. 30% Founder Royalty Immutable.<br>\u0628\u0650\u0633\u0652\u0645\u0650 \u0627\u0644\u0644\u064E\u0651\u0647\u0650 \u0627\u0644\u0631\u064E\u0651\u062D\u0652\u0645\u064E\u0646\u0650 \u0627\u0644\u0631\u064E\u0651\u062D\u0650\u064A\u0645\u0650</p>
 </footer>

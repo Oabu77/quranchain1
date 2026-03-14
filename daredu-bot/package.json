@@ -1,0 +1,14 @@
+{
+  "name": "daredu-bot",
+  "version": "1.0.0",
+  "description": "DarEdu™ — Islamic Education, University & Research",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js",
+    "register": "node register-commands.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.18.0",
+    "dotenv": "^16.4.7"
+  }
+}

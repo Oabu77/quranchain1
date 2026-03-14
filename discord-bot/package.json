@@ -1,0 +1,15 @@
+{
+  "name": "darcloud-discord-bot",
+  "version": "1.0.0",
+  "description": "QuranChain™ DarCloud Discord Bot — Full system integration",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js",
+    "register": "node register-commands.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.6.2",
+    "discord.js": "^14.18.0",
+    "dotenv": "^17.3.1"
+  }
+}

@@ -1,0 +1,45 @@
+logger:
+  file:
+    path: /opt/open5gs/var/log/open5gs/smf.log
+  level: info
+
+smf:
+  sbi:
+    server:
+      - address: 0.0.0.0
+        port: 7777
+    client:
+      nrf:
+        - uri: http://nrf:7777
+      scp:
+        - uri: http://scp:7777
+  pfcp:
+    server:
+      - address: 0.0.0.0
+    client:
+      upf:
+        - address: upf
+  gtpc:
+    server:
+      - address: 0.0.0.0
+  gtpu:
+    server:
+      - address: 0.0.0.0
+  metrics:
+    server:
+      - address: 0.0.0.0
+        port: 9090
+  session:
+    - subnet: 10.45.0.0/16
+      gateway: 10.45.0.1
+    - subnet: 2001:db8:cafe::/48
+      gateway: 2001:db8:cafe::1
+  dns:
+    - 1.1.1.1
+    - 8.8.8.8
+    - 2606:4700:4700::1111
+    - 2001:4860:4860::8888
+  mtu: 1400
+  ctf:
+    enabled: auto
+  freeDiameter: /opt/open5gs/etc/freeDiameter/smf.conf

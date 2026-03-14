@@ -75,8 +75,9 @@ footer{padding:2rem;border-top:1px solid var(--bdr);text-align:center;position:r
 <body>
 <nav>
   <div class="logo">\u{1F916} DarCloud AI Fleet</div>
-  <div class="nav-links"><a href="#agents">Agents</a><a href="#api">API</a><a href="/api/fleet">Fleet JSON</a><a href="https://darcloud.host">DarCloud</a></div>
+  <div class="nav-links"><a href="#agents">Agents</a><a href="#api">API</a><a href="/api/fleet">Fleet JSON</a><a href="https://darcloud.host">DarCloud</a><a href="https://darcloud.host/login" style="color:var(--cyan)">Sign In</a></div>
   <a class="btn btn-ai" href="/api/assistants">Explore Agents</a>
+    <a href="https://discord.gg/darcloud" target="_blank" rel="noopener">Discord</a>
 </nav>
 <section class="hero">
   <div class="hero-badge"><span class="dot"></span> 66 Agents Deployed \u2014 All Online</div>
@@ -200,6 +201,8 @@ footer{padding:2rem;border-top:1px solid var(--bdr);text-align:center;position:r
     <a href="https://darcloud.net">DarCloud.net</a>
   </div>
   <p class="footer-copy">\xA9 2026 DarCloud AI Fleet by Omar Abu Nadi. 40% AI Validator Revenue Share. 30% Founder Royalty Immutable.</p>
+
+  <div class="footer-legal" style="margin-top:.75rem;font-size:.8rem"><a href="https://darcloud.host/privacy">Privacy Policy</a> · <a href="https://darcloud.host/terms">Terms of Service</a> · <a href="https://discord.gg/darcloud" target="_blank" rel="noopener">Join our Discord</a></div>
 </footer>
 </body></html>`;
 var ASSISTANTS = {

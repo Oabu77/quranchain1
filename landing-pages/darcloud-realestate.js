@@ -76,8 +76,9 @@ footer{padding:2rem;border-top:1px solid var(--bdr);text-align:center}
 <body>
 <nav>
   <div class="logo">\u{1F3E0} Dar Al Nas</div>
-  <div class="nav-links"><a href="#cities">Markets</a><a href="https://halalwealthclub.darcloud.host">HWC</a><a href="https://darcloud.host">DarCloud</a></div>
+  <div class="nav-links"><a href="#cities">Markets</a><a href="https://halalwealthclub.darcloud.host">HWC</a><a href="https://darcloud.host">DarCloud</a><a href="https://darcloud.host/login" style="color:var(--cyan)">Sign In</a></div>
   <a class="btn btn-green" href="https://halalwealthclub.darcloud.host">Join HWC</a>
+    <a href="https://discord.gg/darcloud" target="_blank" rel="noopener">Discord</a>
 </nav>
 <section class="hero">
   <p class="bismillah">\u0628\u0650\u0633\u0652\u0645\u0650 \u0627\u0644\u0644\u064E\u0651\u0647\u0650 \u0627\u0644\u0631\u064E\u0651\u062D\u0652\u0645\u064E\u0646\u0650 \u0627\u0644\u0631\u064E\u0651\u062D\u0650\u064A\u0645\u0650</p>
@@ -146,6 +147,8 @@ footer{padding:2rem;border-top:1px solid var(--bdr);text-align:center}
     <a href="https://blockchain.darcloud.host">Blockchain</a><a href="https://darcloud.net">DarCloud.net</a>
   </div>
   <p class="footer-copy">\xA9 2026 Dar Al Nas by Omar Abu Nadi. Private HWC Fund. 30% Founder Royalty Immutable.</p>
+
+  <div class="footer-legal" style="margin-top:.75rem;font-size:.8rem"><a href="https://darcloud.host/privacy">Privacy Policy</a> · <a href="https://darcloud.host/terms">Terms of Service</a> · <a href="https://discord.gg/darcloud" target="_blank" rel="noopener">Join our Discord</a></div>
 </footer>
 </body></html>`;
 var src_default = {

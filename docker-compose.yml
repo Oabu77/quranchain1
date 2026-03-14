@@ -86,6 +86,90 @@ services:
       - "8085:8080"
       - "51825:51820/udp"
 
+  # ─── WiFi Gateway Nodes (B.A.T.M.A.N. + WireGuard) ──
+  fungimesh-wifi-gw1:
+    build:
+      context: ./docker/fungimesh-gateway
+      dockerfile: Dockerfile
+    container_name: fungimesh-wifi-gw1
+    hostname: fungimesh-wifi-gw1
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+    environment:
+      NODE_NAME: fungimesh-wifi-gw1
+      NODE_ROLE: gateway
+      BATMAN_GW_MODE: server
+      AP_SSID: DarCloud-WiFi-1
+      DARCLOUD_API: https://darcloud.host
+    ports:
+      - "8090:8080"    # Health API
+      - "8891:8888"    # Captive portal
+      - "51830:51820/udp"
+    networks:
+      - fungimesh
+
+  fungimesh-wifi-gw2:
+    build:
+      context: ./docker/fungimesh-gateway
+      dockerfile: Dockerfile
+    container_name: fungimesh-wifi-gw2
+    hostname: fungimesh-wifi-gw2
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+    environment:
+      NODE_NAME: fungimesh-wifi-gw2
+      NODE_ROLE: gateway
+      BATMAN_GW_MODE: client
+      AP_SSID: DarCloud-WiFi-2
+      DARCLOUD_API: https://darcloud.host
+    ports:
+      - "8091:8080"
+      - "8892:8888"
+      - "51831:51820/udp"
+    networks:
+      - fungimesh
+
+  fungimesh-wifi-gw3:
+    build:
+      context: ./docker/fungimesh-gateway
+      dockerfile: Dockerfile
+    container_name: fungimesh-wifi-gw3
+    hostname: fungimesh-wifi-gw3
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+    environment:
+      NODE_NAME: fungimesh-wifi-gw3
+      NODE_ROLE: gateway
+      BATMAN_GW_MODE: client
+      AP_SSID: DarCloud-WiFi-3
+      DARCLOUD_API: https://darcloud.host
+    ports:
+      - "8092:8080"
+      - "8893:8888"
+      - "51832:51820/udp"
+    networks:
+      - fungimesh
+
+  # ─── Discord Bot ───────────────────────────────
+  darcloud-discord-bot:
+    build:
+      context: ./discord-bot
+      dockerfile: Dockerfile
+    container_name: darcloud-discord-bot
+    hostname: darcloud-discord-bot
+    restart: unless-stopped
+    environment:
+      DISCORD_TOKEN: ${DISCORD_TOKEN}
+      DISCORD_CLIENT_ID: ${DISCORD_CLIENT_ID}
+      API_BASE: http://host.docker.internal:8787
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - fungimesh
+
 networks:
   fungimesh:
     driver: bridge

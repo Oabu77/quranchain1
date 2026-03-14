@@ -1,0 +1,17 @@
+{
+  "name": "meshtalk-bot",
+  "version": "1.0.0",
+  "description": "MeshTalk™ OS — Mesh-Based Communications Bot",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js",
+    "register": "node register-commands.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.6.2",
+    "discord.js": "^14.18.0"
+  },
+  "devDependencies": {
+    "@napi-rs/canvas": "^0.1.96"
+  }
+}

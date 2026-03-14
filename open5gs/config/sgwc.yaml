@@ -1,0 +1,19 @@
+logger:
+  file:
+    path: /opt/open5gs/var/log/open5gs/sgwc.log
+  level: info
+
+sgwc:
+  sbi:
+    client:
+      nrf:
+        - uri: http://nrf:7777
+  gtpc:
+    server:
+      - address: 0.0.0.0
+  pfcp:
+    server:
+      - address: 0.0.0.0
+    client:
+      sgwu:
+        - address: sgwu

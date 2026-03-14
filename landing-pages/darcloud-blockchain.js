@@ -91,8 +91,9 @@ footer{padding:3rem 2rem;border-top:1px solid var(--bdr);text-align:center;z-ind
     <a href="https://darcloud.host">DarCloud</a>
     <a href="https://ai.darcloud.host">AI Agents</a>
     <a href="https://api.darcloud.host/api">API</a>
-  </div>
+  <a href="https://darcloud.host/login" style="color:var(--cyan)">Sign In</a></div>
   <a class="btn btn-amber" href="/explorer">Explorer</a>
+    <a href="https://discord.gg/darcloud" target="_blank" rel="noopener">Discord</a>
 </nav>
 
 <section class="hero">
@@ -241,6 +242,8 @@ footer{padding:3rem 2rem;border-top:1px solid var(--bdr);text-align:center;z-ind
     <a href="https://halalwealthclub.darcloud.host">HWC</a>
   </div>
   <p class="footer-copy">\xA9 2026 QuranChain by Omar Abu Nadi. 30% Founder Royalty Immutable. All Validators Online.</p>
+
+  <div class="footer-legal" style="margin-top:.75rem;font-size:.8rem"><a href="https://darcloud.host/privacy">Privacy Policy</a> · <a href="https://darcloud.host/terms">Terms of Service</a> · <a href="https://discord.gg/darcloud" target="_blank" rel="noopener">Join our Discord</a></div>
 </footer>
 
 </body></html>`;

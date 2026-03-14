@@ -1,0 +1,8 @@
+{
+  "name": "aifleet-bot",
+  "version": "1.0.0",
+  "description": "DarCloud AI Fleet™ Bot — 66 AI agents, 12 GPT-4o assistants",
+  "main": "bot.js",
+  "scripts": { "start": "node bot.js", "register": "node register-commands.js" },
+  "dependencies": { "discord.js": "^14.18.0" }
+}

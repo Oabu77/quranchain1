@@ -78,8 +78,9 @@ footer{padding:2rem;border-top:1px solid var(--bdr);text-align:center;position:r
 <body>
 <nav>
   <div class="logo">\u{1F344} FungiMesh</div>
-  <div class="nav-links"><a href="#tech">Technology</a><a href="/api/status">Live Status</a><a href="https://darcloud.host">DarCloud</a></div>
+  <div class="nav-links"><a href="#tech">Technology</a><a href="/api/status">Live Status</a><a href="https://darcloud.host">DarCloud</a><a href="https://darcloud.host/login" style="color:var(--cyan)">Sign In</a></div>
   <a class="btn btn-mesh" href="https://darcloud.host">Join Network</a>
+    <a href="https://discord.gg/darcloud" target="_blank" rel="noopener">Discord</a>
 </nav>
 <section class="hero">
   <div class="hero-badge"><span class="dot"></span> 340,000 Nodes Online \u2014 6 Continents</div>
@@ -139,6 +140,8 @@ footer{padding:2rem;border-top:1px solid var(--bdr);text-align:center;position:r
     <a href="https://ai.darcloud.host">AI Agents</a><a href="https://darcloud.net">DarCloud.net</a>
   </div>
   <p class="footer-copy">\xA9 2026 FungiMesh by Omar Abu Nadi. Part of the DarCloud Ecosystem. 30% Founder Royalty Immutable.</p>
+
+  <div class="footer-legal" style="margin-top:.75rem;font-size:.8rem"><a href="https://darcloud.host/privacy">Privacy Policy</a> · <a href="https://darcloud.host/terms">Terms of Service</a> · <a href="https://discord.gg/darcloud" target="_blank" rel="noopener">Join our Discord</a></div>
 </footer>
 </body></html>`;
 var src_default = {
