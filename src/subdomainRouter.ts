@@ -33,6 +33,50 @@ import revenuePage from "../landing-pages/darcloud-revenue.js";
 
 type LandingPage = { fetch(request: Request): Promise<Response> };
 
+// SSO auth bar script injected into every landing page
+// Checks the darcloud_session cookie via /api/auth/session
+// Replaces "Sign In" nav links with user greeting + dashboard link
+const SSO_AUTH_SCRIPT = `<script>
+(function(){
+  var api='https://darcloud.host/api/auth/session';
+  fetch(api,{credentials:'include'}).then(function(r){return r.json()}).then(function(d){
+    if(!d.authenticated)return;
+    var u=d.user;
+    // Find and update "Sign In" links in nav
+    document.querySelectorAll('a[href*="/login"],a[href*="Sign In"],a[href*="sign-in"]').forEach(function(a){
+      if(a.closest('nav')||a.closest('.nav-links')){
+        a.textContent='\\u{1F44B} '+u.name;
+        a.href='https://darcloud.host/dashboard';
+        a.style.color='#10b981';
+      }
+    });
+    // Also match text-content based sign-in links
+    document.querySelectorAll('nav a, .nav-links a').forEach(function(a){
+      if(a.textContent.trim()==='Sign In'||a.textContent.trim()==='Login'){
+        a.textContent='\\u{1F44B} '+u.name;
+        a.href='https://darcloud.host/dashboard';
+        a.style.color='#10b981';
+      }
+    });
+  }).catch(function(){});
+})();
+</script>`;
+
+// Inject SSO script before </body> in landing page HTML
+async function injectSSOScript(response: Response): Promise<Response> {
+  const contentType = response.headers.get("content-type") || "";
+  if (!contentType.includes("text/html")) return response;
+
+  const html = await response.text();
+  const injected = html.replace("</body>", SSO_AUTH_SCRIPT + "</body>");
+
+  const newHeaders = new Headers(response.headers);
+  return new Response(injected, {
+    status: response.status,
+    headers: newHeaders,
+  });
+}
+
 // Map subdomains to their landing page modules
 const SUBDOMAIN_MAP: Record<string, LandingPage> = {
   // Existing pages
@@ -84,7 +128,8 @@ export async function handleSubdomain(
 
   // darcloud.net apex → net landing page
   if (hostname === "darcloud.net") {
-    return NET_PAGE.fetch(request);
+    const resp = await NET_PAGE.fetch(request);
+    return injectSSOScript(resp);
   }
 
   // *.darcloud.host or *.darcloud.net subdomains
@@ -95,7 +140,8 @@ export async function handleSubdomain(
     const subdomain = subMatch[1];
     const page = SUBDOMAIN_MAP[subdomain];
     if (page) {
-      return page.fetch(request);
+      const resp = await page.fetch(request);
+      return injectSSOScript(resp);
     }
   }
 

@@ -36,20 +36,29 @@ app.use("*", async (c, next) => {
   await next();
 });
 
-// ── CORS middleware for all routes ──
+// ── CORS middleware for all routes (support cross-subdomain SSO cookies) ──
 app.use("*", async (c, next) => {
+  const origin = c.req.header("Origin") || "";
+  // Allow any *.darcloud.host or *.darcloud.net origin, or the apex domains
+  const isAllowedOrigin = /^https?:\/\/([\w-]+\.)?darcloud\.(host|net)(:\d+)?$/.test(origin);
+  const allowOrigin = isAllowedOrigin ? origin : "*";
+
   if (c.req.method === "OPTIONS") {
     return new Response(null, {
       status: 204,
       headers: {
-        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Origin": allowOrigin,
         "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
         "Access-Control-Allow-Headers": "Content-Type,Authorization",
+        "Access-Control-Allow-Credentials": "true",
       },
     });
   }
   await next();
-  c.res.headers.set("Access-Control-Allow-Origin", "*");
+  c.res.headers.set("Access-Control-Allow-Origin", allowOrigin);
+  if (isAllowedOrigin) {
+    c.res.headers.set("Access-Control-Allow-Credentials", "true");
+  }
 });
 
 // ── Root redirect → www landing page ──

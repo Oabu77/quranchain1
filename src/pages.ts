@@ -121,6 +121,7 @@ async function handleSignup(e) {
     const res = await fetch('/api/auth/signup', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
+      credentials: 'include',
       body: JSON.stringify({
         name: document.getElementById('name').value,
         email: document.getElementById('email').value,
@@ -186,6 +187,7 @@ async function handleLogin(e) {
     const res = await fetch('/api/auth/login', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
+      credentials: 'include',
       body: JSON.stringify({
         email: document.getElementById('email').value,
         password: document.getElementById('password').value
@@ -437,18 +439,25 @@ export const DASHBOARD_PAGE = pageShell("Dashboard", `
 <script>
 (async function() {
   const token = localStorage.getItem('darcloud_token');
-  if (!token) { window.location.href = '/login'; return; }
+  // Check SSO cookie session first, then localStorage
+  let meRes;
+  if (token) {
+    meRes = await fetch('/api/auth/me', { headers: { Authorization: 'Bearer ' + token }, credentials: 'include' });
+  } else {
+    // Try cookie-based session
+    meRes = await fetch('/api/auth/session', { credentials: 'include' });
+  }
+  if (!meRes.ok && !token) { window.location.href = '/login'; return; }
+  const meData = await meRes.json();
+  if (!meData.success && !meData.authenticated) { localStorage.removeItem('darcloud_token'); window.location.href = '/login'; return; }
+  const me = meData;
+  const user = me.user;
   try {
-    const [meRes, healthRes] = await Promise.all([
-      fetch('/api/auth/me', { headers: { Authorization: 'Bearer ' + token } }),
-      fetch('/health')
-    ]);
-    if (!meRes.ok) { localStorage.removeItem('darcloud_token'); window.location.href = '/login'; return; }
-    const me = await meRes.json();
-    const health = await healthRes.json();
-    document.getElementById('greeting').textContent = 'As-salamu alaykum, ' + me.user.name + '!';
-    document.getElementById('planName').textContent = (me.user.plan || 'starter').charAt(0).toUpperCase() + (me.user.plan || 'starter').slice(1);
+    const healthRes = await fetch('/health');
+    document.getElementById('greeting').textContent = 'As-salamu alaykum, ' + user.name + '!';
+    document.getElementById('planName').textContent = (user.plan || 'starter').charAt(0).toUpperCase() + (user.plan || 'starter').slice(1);
     if (healthRes.ok) {
+      const health = await healthRes.json();
       document.getElementById('healthStatus').textContent = health.status === 'healthy' ? '✅' : '⚠️';
       document.getElementById('dbTables').textContent = health.components?.database?.tables || '—';
       document.getElementById('aiAgents').textContent = health.components?.ai_agents || '77';
@@ -463,7 +472,10 @@ export const DASHBOARD_PAGE = pageShell("Dashboard", `
     document.getElementById('error').style.display = 'block';
   }
 })();
-function logout() { localStorage.removeItem('darcloud_token'); window.location.href = '/login'; }
+function logout() {
+  localStorage.removeItem('darcloud_token');
+  fetch('/api/auth/logout', { method: 'POST', credentials: 'include' }).finally(() => { window.location.href = '/login'; });
+}
 setInterval(async () => {
   const t = localStorage.getItem('darcloud_token');
   if (!t) return;

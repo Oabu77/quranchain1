@@ -327,7 +327,7 @@ async function handleLogin(e){
   btn.textContent='Signing in...';btn.disabled=true;
   try{
     var res=await fetch('https://darcloud.host/api/auth/login',{
-      method:'POST',headers:{'Content-Type':'application/json'},
+      method:'POST',headers:{'Content-Type':'application/json'},credentials:'include',
       body:JSON.stringify({email:document.getElementById('email').value,password:document.getElementById('password').value})
     });
     var data=await res.json();
@@ -424,7 +424,7 @@ async function handleSignup(e){
   try{
     var params=new URLSearchParams(window.location.search);
     var res=await fetch('https://darcloud.host/api/auth/signup',{
-      method:'POST',headers:{'Content-Type':'application/json'},
+      method:'POST',headers:{'Content-Type':'application/json'},credentials:'include',
       body:JSON.stringify({name:document.getElementById('name').value,email:document.getElementById('email').value,password:document.getElementById('password').value,plan:params.get('plan')||'starter'})
     });
     var data=await res.json();

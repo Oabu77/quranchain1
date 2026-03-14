@@ -81,14 +81,45 @@ async function verifyJWT(token: string, secret: string): Promise<Record<string, 
   }
 }
 
-// Auth middleware for protected routes
+// ── SSO Cookie helpers — shared across all *.darcloud.host subdomains ──
+const SSO_COOKIE_NAME = "darcloud_session";
+const SSO_COOKIE_DOMAIN = ".darcloud.host";
+const SSO_MAX_AGE = 86400; // 24 hours
+
+function setSessionCookie(token: string): string {
+  return `${SSO_COOKIE_NAME}=${token}; Domain=${SSO_COOKIE_DOMAIN}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${SSO_MAX_AGE}`;
+}
+
+function clearSessionCookie(): string {
+  return `${SSO_COOKIE_NAME}=; Domain=${SSO_COOKIE_DOMAIN}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`;
+}
+
+function getCookieToken(cookieHeader: string | undefined): string | null {
+  if (!cookieHeader) return null;
+  const match = cookieHeader.match(new RegExp(`(?:^|;\\s*)${SSO_COOKIE_NAME}=([^;]+)`));
+  return match ? match[1] : null;
+}
+
+// Auth middleware for protected routes — reads Bearer token OR SSO cookie
 async function requireAuth(c: { req: { header: (name: string) => string | undefined }; env: { JWT_SECRET?: string }; json: (data: unknown, status?: number) => Response; set: (key: string, value: unknown) => void }): Promise<Response | null> {
-  const authHeader = c.req.header("Authorization");
-  if (!authHeader?.startsWith("Bearer ")) {
-    return c.json({ error: "Authorization header required (Bearer <token>)" }, 401);
-  }
-  const token = authHeader.substring(7);
   const secret = c.env.JWT_SECRET || JWT_SECRET_FALLBACK;
+  let token: string | null = null;
+
+  // 1. Try Authorization header
+  const authHeader = c.req.header("Authorization");
+  if (authHeader?.startsWith("Bearer ")) {
+    token = authHeader.substring(7);
+  }
+
+  // 2. Fall back to SSO cookie
+  if (!token) {
+    token = getCookieToken(c.req.header("Cookie"));
+  }
+
+  if (!token) {
+    return c.json({ error: "Authorization required (Bearer token or session cookie)" }, 401);
+  }
+
   const payload = await verifyJWT(token, secret);
   if (!payload) {
     return c.json({ error: "Invalid or expired token" }, 401);
@@ -223,13 +254,16 @@ auth.post("/auth/signup", async (c) => {
     const secret = c.env.JWT_SECRET || JWT_SECRET_FALLBACK;
     const token = await signJWT({ email: email.toLowerCase(), name, plan: validPlan, role: "user" }, secret);
 
-    return c.json({
+    const response = c.json({
       success: true,
       message: "Account created successfully",
       user: { email: email.toLowerCase(), name, plan: validPlan },
       token,
       execution_ms: Date.now() - start,
     });
+    // Set SSO cookie for cross-subdomain auth
+    c.header("Set-Cookie", setSessionCookie(token));
+    return response;
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Signup failed";
     return c.json({ error: message, execution_ms: Date.now() - start }, 500);
@@ -280,13 +314,16 @@ auth.post("/auth/login", async (c) => {
       secret
     );
 
-    return c.json({
+    const response = c.json({
       success: true,
       message: "Login successful",
       user: { email: user.email, name: user.name, plan: user.plan },
       token,
       execution_ms: Date.now() - start,
     });
+    // Set SSO cookie for cross-subdomain auth
+    c.header("Set-Cookie", setSessionCookie(token));
+    return response;
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Login failed";
     return c.json({ error: message, execution_ms: Date.now() - start }, 500);
@@ -491,12 +528,17 @@ auth.get("/auth/me", async (c) => {
 // GET /api/admin/stats — Admin dashboard stats (protected)
 auth.get("/admin/stats", async (c) => {
   const start = Date.now();
-  const authHeader = c.req.header("Authorization");
-  if (!authHeader?.startsWith("Bearer ")) {
-    return c.json({ error: "Authorization required" }, 401);
-  }
   const secret = c.env.JWT_SECRET || JWT_SECRET_FALLBACK;
-  const payload = await verifyJWT(authHeader.substring(7), secret);
+  let token: string | null = null;
+  const authHeader = c.req.header("Authorization");
+  if (authHeader?.startsWith("Bearer ")) {
+    token = authHeader.substring(7);
+  }
+  if (!token) {
+    token = getCookieToken(c.req.header("Cookie"));
+  }
+  if (!token) return c.json({ error: "Authorization required" }, 401);
+  const payload = await verifyJWT(token, secret);
   if (!payload) return c.json({ error: "Invalid or expired token" }, 401);
 
   const db = c.env.DB;
@@ -546,6 +588,31 @@ auth.get("/admin/stats", async (c) => {
     recent_users: recentUsers.results,
     plan_breakdown: planBreakdown.results,
     execution_ms: Date.now() - start,
+  });
+});
+
+// POST /api/auth/logout — Clear SSO cookie
+auth.post("/auth/logout", (c) => {
+  c.header("Set-Cookie", clearSessionCookie());
+  return c.json({ success: true, message: "Logged out" });
+});
+
+// GET /api/auth/session — Check SSO session from cookie (no auth header needed)
+auth.get("/auth/session", async (c) => {
+  const secret = c.env.JWT_SECRET || JWT_SECRET_FALLBACK;
+  const token = getCookieToken(c.req.header("Cookie"));
+  if (!token) {
+    return c.json({ authenticated: false });
+  }
+  const payload = await verifyJWT(token, secret);
+  if (!payload) {
+    // Cookie exists but is invalid/expired — clear it
+    c.header("Set-Cookie", clearSessionCookie());
+    return c.json({ authenticated: false });
+  }
+  return c.json({
+    authenticated: true,
+    user: { name: payload.name, email: payload.email, plan: payload.plan },
   });
 });
 
