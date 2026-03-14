@@ -222,6 +222,7 @@ client.on('interactionCreate', async interaction => {
         break;
       }
     }
+  } catch (error) {
     const reply = { content: '❌ Command failed: ' + error.message, ephemeral: true };
     if (interaction.replied || interaction.deferred) await interaction.followUp(reply);
     else await interaction.reply(reply);

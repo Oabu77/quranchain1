@@ -27,6 +27,7 @@ const BOT_REGISTRY = {
   dardefi:     { port: 9019, name: "DarDeFi",        role: "defi"         },
   darhr:       { port: 9020, name: "DarHR",           role: "hr"           },
   aifleet:     { port: 9021, name: "AIFleet",         role: "ai"           },
+  darlaw:      { port: 9022, name: "DarLaw",          role: "legal"        },
 };
 
 // ── Event Bus (SQLite-backed) ─────────────────────────────
