@@ -1,0 +1,170 @@
+#!/system/bin/sh
+##############################################################################
+# DarCloud FungiMesh Node — Bare Metal Mesh Router
+# Runs WireGuard mesh, routing table, peer discovery, heartbeat
+# Executes directly on Android Linux kernel — no Termux
+##############################################################################
+
+. /system/darcloud/etc/darcloud.conf
+
+log() { echo "$(date '+%Y-%m-%d %H:%M:%S') [MESHNODE] $1" >> "$LOG_DIR/meshnode.log"; }
+
+log "Bismillah — FungiMesh Node starting on bare metal..."
+echo $$ > "$PID_DIR/meshnode.pid"
+
+# --- Load node config ---
+if [ -f "$MESH_DIR/node.conf" ]; then
+    . "$MESH_DIR/node.conf"
+else
+    NODE_NAME="mobile-$(getprop ro.serialno | tail -c 9)"
+fi
+
+log "Node: $NODE_NAME"
+
+# --- Setup WireGuard interface ---
+setup_wireguard() {
+    log "Setting up WireGuard interface..."
+
+    PRIVATE_KEY=$(cat "$WG_DIR/privatekey" 2>/dev/null)
+    if [ -z "$PRIVATE_KEY" ]; then
+        log "ERROR: No WireGuard private key — run darcloud-register first"
+        return 1
+    fi
+
+    # Fetch peers from DarCloud API
+    PEERS_JSON=$(curl -sf --connect-timeout 10 \
+        "$DARCLOUD_API/mesh/peers/$NODE_NAME" 2>/dev/null)
+
+    if [ -n "$PEERS_JSON" ]; then
+        echo "$PEERS_JSON" > "$WG_DIR/peers.json"
+        log "Fetched mesh peers from API"
+    fi
+
+    # Read mesh IP
+    MESH_IP=$(cat "$MESH_DIR/mesh-ip" 2>/dev/null || echo "10.77.0.$(shuf -i 2-254 -n 1)")
+
+    # Create WireGuard config
+    cat > "$WG_DIR/wg0.conf" << WGCONF
+[Interface]
+PrivateKey = $PRIVATE_KEY
+Address = $MESH_IP/16
+ListenPort = $WIREGUARD_PORT
+WGCONF
+
+    # Parse peers and add to config (simple JSON parsing with shell)
+    if [ -f "$WG_DIR/peers.json" ]; then
+        # Extract peer entries — each has pubkey, endpoint, allowed_ips
+        echo "$PEERS_JSON" | grep -o '"pubkey":"[^"]*"' | cut -d'"' -f4 | while read PEER_PUB; do
+            PEER_EP=$(echo "$PEERS_JSON" | grep -o "\"endpoint\":\"[^\"]*\"" | head -1 | cut -d'"' -f4)
+            cat >> "$WG_DIR/wg0.conf" << PEER
+
+[Peer]
+PublicKey = $PEER_PUB
+Endpoint = $PEER_EP
+AllowedIPs = 10.77.0.0/16
+PersistentKeepalive = 25
+PEER
+        done
+        log "Added mesh peers to WireGuard config"
+    fi
+
+    # Bring up WireGuard
+    ip link add dev wg0 type wireguard 2>/dev/null
+    /system/darcloud/bin/wg setconf wg0 "$WG_DIR/wg0.conf" 2>/dev/null
+    ip addr add "$MESH_IP/16" dev wg0 2>/dev/null
+    ip link set wg0 up 2>/dev/null
+
+    if ip link show wg0 > /dev/null 2>&1; then
+        log "WireGuard interface wg0 UP — mesh IP: $MESH_IP"
+    else
+        log "WARNING: WireGuard kernel module may not be loaded — using userspace fallback"
+        # Fallback: use boringtun userspace WireGuard
+        if [ -f /system/darcloud/bin/boringtun ]; then
+            /system/darcloud/bin/boringtun wg0 --disable-drop-privileges &
+            sleep 1
+            /system/darcloud/bin/wg setconf wg0 "$WG_DIR/wg0.conf" 2>/dev/null
+            ip addr add "$MESH_IP/16" dev wg0 2>/dev/null
+            ip link set wg0 up 2>/dev/null
+            log "Using boringtun userspace WireGuard"
+        fi
+    fi
+
+    # Enable IP forwarding for mesh routing
+    echo 1 > /proc/sys/net/ipv4/ip_forward 2>/dev/null
+    log "IPv4 forwarding enabled"
+}
+
+# --- Routing table management ---
+ROUTING_TABLE="$MESH_DIR/routes.json"
+echo '{"routes":[],"updated":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"}' > "$ROUTING_TABLE"
+
+update_routes() {
+    # Fetch routing updates from API
+    ROUTE_DATA=$(curl -sf --connect-timeout 10 \
+        "$DARCLOUD_API/mesh/routes/$NODE_NAME" 2>/dev/null)
+
+    if [ -n "$ROUTE_DATA" ]; then
+        echo "$ROUTE_DATA" > "$ROUTING_TABLE"
+        log "Routing table updated from API"
+    fi
+}
+
+# --- Heartbeat ---
+send_heartbeat() {
+    UPTIME=$(cat /proc/uptime | awk '{print $1}')
+    WG_STATUS=$(/system/darcloud/bin/wg show wg0 2>/dev/null | head -5 || echo "down")
+    BATTERY=$(cat /sys/class/power_supply/battery/capacity 2>/dev/null || echo "unknown")
+    SIGNAL=$(dumpsys telephony.registry 2>/dev/null | grep mSignalStrength | head -1 | awk '{print $NF}' || echo "unknown")
+    CONNECTED_CLIENTS=$(ip neigh show dev wlan1 2>/dev/null | grep -c REACHABLE || echo "0")
+
+    HEARTBEAT=$(cat << EOF
+{
+    "node_name": "$NODE_NAME",
+    "node_type": "$NODE_TYPE",
+    "uptime": $UPTIME,
+    "battery_pct": "$BATTERY",
+    "signal_strength": "$SIGNAL",
+    "connected_clients": $CONNECTED_CLIENTS,
+    "wg_status": "$(ip link show wg0 2>/dev/null | grep -c UP)",
+    "mesh_ip": "$(cat $MESH_DIR/mesh-ip 2>/dev/null)",
+    "timestamp": "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+}
+EOF
+)
+
+    curl -sf --connect-timeout 10 \
+        -X POST \
+        -H "Content-Type: application/json" \
+        -d "$HEARTBEAT" \
+        "$DARCLOUD_API/mesh/heartbeat" > /dev/null 2>&1
+
+    curl -sf --connect-timeout 10 \
+        -X POST \
+        -H "Content-Type: application/json" \
+        -d "$HEARTBEAT" \
+        "$DARCLOUD_API/telecom/mesh/heartbeat" > /dev/null 2>&1
+}
+
+# --- Main loop ---
+setup_wireguard
+
+LOOP_COUNT=0
+while true; do
+    LOOP_COUNT=$((LOOP_COUNT + 1))
+
+    # Heartbeat every 2 minutes
+    send_heartbeat
+    log "Heartbeat #$LOOP_COUNT sent (battery: $(cat /sys/class/power_supply/battery/capacity 2>/dev/null || echo '?')%)"
+
+    # Update routes every 5 heartbeats (10 min)
+    if [ $((LOOP_COUNT % 5)) -eq 0 ]; then
+        update_routes
+    fi
+
+    # Re-fetch peers every 15 heartbeats (30 min)
+    if [ $((LOOP_COUNT % 15)) -eq 0 ]; then
+        setup_wireguard
+    fi
+
+    sleep "$HEARTBEAT_INTERVAL"
+done

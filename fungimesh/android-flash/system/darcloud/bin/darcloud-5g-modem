@@ -1,0 +1,724 @@
+#!/system/bin/sh
+##############################################################################
+# DarCloud 5G Modem — Bare Metal 5G/LTE Radio & Data Service
+# QMI/MBIM modem control, 5G NR/SA connection, APN management,
+# data session, band locking, signal optimization, tethering
+# Runs directly on Android Linux kernel
+##############################################################################
+
+. /system/darcloud/etc/darcloud.conf
+
+log() { echo "$(date '+%Y-%m-%d %H:%M:%S') [5G] $1" >> "$LOG_DIR/5g-modem.log"; }
+
+log "Bismillah — 5G Modem Manager starting..."
+echo $$ > "$PID_DIR/5g-modem.pid"
+
+MODEM_DIR="$DATA_DIR/modem"
+mkdir -p "$MODEM_DIR"
+
+NODE_NAME=$(cat "$MESH_DIR/node.conf" 2>/dev/null | grep NODE_NAME | cut -d= -f2)
+
+# --- Detect cellular modem hardware ---
+detect_modem_hw() {
+    log "Detecting 5G/LTE modem hardware..."
+
+    # Samsung Exynos modem
+    EXYNOS_MODEM=$(getprop ro.hardware.chipname 2>/dev/null)
+    if echo "$EXYNOS_MODEM" | grep -qi "exynos"; then
+        MODEM_CHIP="exynos"
+        MODEM_NAME=$(getprop gsm.version.baseband 2>/dev/null)
+        log "Exynos modem: $MODEM_NAME"
+    fi
+
+    # Qualcomm Snapdragon modem
+    QCOM_SOC=$(getprop ro.hardware 2>/dev/null)
+    if echo "$QCOM_SOC" | grep -qi "qcom\|sdm\|sm[0-9]\|msm"; then
+        MODEM_CHIP="qualcomm"
+        MODEM_NAME=$(getprop gsm.version.baseband 2>/dev/null)
+        log "Qualcomm modem: $MODEM_NAME"
+    fi
+
+    # MediaTek modem
+    if getprop ro.hardware 2>/dev/null | grep -qi "mt[0-9]"; then
+        MODEM_CHIP="mediatek"
+        MODEM_NAME=$(getprop gsm.version.baseband 2>/dev/null)
+    fi
+
+    # 5G capability detection
+    NR_CAPABLE="false"
+    NR_STATE=$(getprop gsm.network.type 2>/dev/null)
+    if echo "$NR_STATE" | grep -qi "NR\|nr\|5G"; then
+        NR_CAPABLE="true"
+    fi
+
+    # Check for 5G modem files
+    if [ -d /sys/class/net/rmnet_data0 ] || [ -d /sys/class/net/rmnet0 ]; then
+        DATA_IFACE="rmnet_data0"
+        [ -d /sys/class/net/rmnet0 ] && DATA_IFACE="rmnet0"
+    fi
+
+    # Band support detection via properties
+    SUPPORTED_BANDS=""
+    NR_BANDS=$(getprop persist.vendor.radio.nr5g.band 2>/dev/null)
+    LTE_BANDS=$(getprop persist.vendor.radio.lte.band 2>/dev/null)
+
+    # Detailed radio info from dumpsys
+    RADIO_INFO=$(dumpsys telephony.registry 2>/dev/null)
+    NR_STATE_DETAIL=$(echo "$RADIO_INFO" | grep -o "mNrState=[A-Z_]*" | head -1 | cut -d= -f2)
+    DATA_ACTIVITY=$(echo "$RADIO_INFO" | grep -o "mDataActivity=[0-9]*" | head -1 | cut -d= -f2)
+    DATA_STATE=$(echo "$RADIO_INFO" | grep -o "mDataConnectionState=[0-9]*" | head -1 | cut -d= -f2)
+
+    cat > "$MODEM_DIR/modem-hw.json" << EOF
+{
+    "modem_chip": "$MODEM_CHIP",
+    "modem_name": "$MODEM_NAME",
+    "nr_capable": $NR_CAPABLE,
+    "nr_state": "$NR_STATE_DETAIL",
+    "network_type": "$NR_STATE",
+    "data_interface": "$DATA_IFACE",
+    "nr_bands": "$NR_BANDS",
+    "lte_bands": "$LTE_BANDS",
+    "data_activity": "$DATA_ACTIVITY",
+    "data_state": "$DATA_STATE",
+    "updated": "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+}
+EOF
+
+    log "Modem: $MODEM_CHIP $MODEM_NAME NR:$NR_CAPABLE iface:$DATA_IFACE"
+}
+
+# --- Configure 5G NR Standalone mode ---
+configure_5g_sa() {
+    log "Configuring 5G SA (Standalone) mode..."
+
+    # Enable 5G NR
+    setprop persist.vendor.radio.5g_mode_pref 1
+    setprop persist.vendor.radio.nr_mode 1
+    setprop persist.vendor.radio.force_nr_enabled 1
+
+    # Samsung-specific 5G enable
+    setprop persist.vendor.radio.enable_nr 1
+    setprop persist.vendor.radio.is_vonr_enabled_0 1
+    setprop persist.vendor.radio.is_vonr_enabled_1 1
+
+    # Prefer 5G SA over NSA
+    setprop persist.vendor.radio.sa_mode 1
+
+    # Enable NR in airplane mode recovery
+    setprop persist.vendor.radio.nr_apm_enabled 1
+
+    # Network mode: NR/LTE/WCDMA/GSM auto
+    # 33 = NR_LTE_TDSCDMA_CDMA_EVDO_GSM_WCDMA
+    service call phone 186 i32 0 i32 33 2>/dev/null
+
+    # Samsung: use hidden menu code *#2263# equivalent
+    # Force NR+LTE via RIL
+    MODEM_CHIP=$(cat "$MODEM_DIR/modem-hw.json" 2>/dev/null | grep -o '"modem_chip":"[^"]*"' | cut -d'"' -f4)
+
+    if [ "$MODEM_CHIP" = "qualcomm" ]; then
+        # Qualcomm: set preferred mode via service call
+        service call phone 186 i32 0 i32 33 2>/dev/null
+        log "Qualcomm 5G SA configured"
+    elif [ "$MODEM_CHIP" = "exynos" ]; then
+        # Exynos: set via Samsung RIL
+        setprop persist.sys.ril.network_mode 33
+        log "Exynos 5G SA configured"
+    fi
+
+    log "5G SA mode enabled"
+}
+
+# --- Detect active carrier ---
+detect_carrier() {
+    log "Detecting active carrier..."
+
+    OPERATOR_NUM=$(getprop gsm.operator.numeric 2>/dev/null)
+    OPERATOR_NAME=$(getprop gsm.operator.alpha 2>/dev/null)
+    SIM_OPERATOR=$(getprop gsm.sim.operator.numeric 2>/dev/null)
+    SPN=$(getprop gsm.sim.operator.alpha 2>/dev/null)
+
+    MCC=${OPERATOR_NUM:0:3}
+    MNC=${OPERATOR_NUM:3}
+
+    CARRIER="unknown"
+    CARRIER_TYPE="mvno"
+
+    case "$OPERATOR_NUM" in
+        # T-Mobile US (MCC 310, various MNCs + 311-490)
+        310260|310200|310210|310220|310230|310240|310250|310270|310310|310490|310580|310660|310880|311490|311882)
+            CARRIER="tmobile"
+            CARRIER_TYPE="major"
+            ;;
+        # AT&T (MCC 310, various MNCs)
+        310410|310070|310150|310170|310380|310560|310680|310980|311180|313100)
+            CARRIER="att"
+            CARRIER_TYPE="major"
+            ;;
+        # Verizon (MCC 310/311/312)
+        310004|310010|310012|310013|311480|311481|311482|311483|311484|311489|312770)
+            CARRIER="verizon"
+            CARRIER_TYPE="major"
+            ;;
+        # US Cellular
+        310730|311220|311580)
+            CARRIER="uscellular"
+            CARRIER_TYPE="regional"
+            ;;
+        # Dish / Boost Mobile
+        312880|313100)
+            CARRIER="dish"
+            CARRIER_TYPE="major"
+            ;;
+        # DarTelecom (private network)
+        99970)
+            CARRIER="dartelecom"
+            CARRIER_TYPE="private"
+            ;;
+    esac
+
+    # Fallback: detect by operator name
+    if [ "$CARRIER" = "unknown" ]; then
+        case "$(echo "$OPERATOR_NAME" | tr '[:upper:]' '[:lower:]')" in
+            *t-mobile*|*tmobile*|*metro*) CARRIER="tmobile" ;;
+            *at&t*|*att*|*cricket*|*firstnet*) CARRIER="att" ;;
+            *verizon*|*vzw*|*visible*) CARRIER="verizon" ;;
+            *sprint*) CARRIER="tmobile" ;;  # Sprint merged into T-Mobile
+            *boost*|*dish*) CARRIER="dish" ;;
+            *us cell*|*uscellular*) CARRIER="uscellular" ;;
+            *darcloud*|*dartelecom*) CARRIER="dartelecom" ;;
+        esac
+    fi
+
+    echo "$CARRIER" > "$MODEM_DIR/carrier"
+    echo "$CARRIER_TYPE" > "$MODEM_DIR/carrier-type"
+    echo "$OPERATOR_NUM" > "$MODEM_DIR/plmn"
+    echo "$OPERATOR_NAME" > "$MODEM_DIR/operator-name"
+
+    cat > "$MODEM_DIR/carrier-info.json" << EOF
+{
+    "carrier": "$CARRIER",
+    "carrier_type": "$CARRIER_TYPE",
+    "operator_name": "$OPERATOR_NAME",
+    "spn": "$SPN",
+    "mcc": "$MCC",
+    "mnc": "$MNC",
+    "plmn": "$OPERATOR_NUM",
+    "detected": "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+}
+EOF
+
+    log "Carrier detected: $CARRIER ($OPERATOR_NAME) PLMN:$OPERATOR_NUM type:$CARRIER_TYPE"
+}
+
+# --- Band locking for optimal performance ---
+configure_bands() {
+    log "Configuring optimal band selection..."
+
+    CARRIER=$(cat "$MODEM_DIR/carrier" 2>/dev/null || echo "unknown")
+
+    case "$CARRIER" in
+        tmobile)
+            # T-Mobile 5G NR (UC = n41, extended range = n71, mmWave = n258/n260/n261)
+            NR_BANDS="41,71,25,258,260,261"
+            # T-Mobile LTE (primary: B2,B4,B12,B66,B71; secondary: B41,B46,B48)
+            LTE_BANDS="2,4,5,12,25,26,41,46,48,66,71"
+            # T-Mobile APN
+            CARRIER_APN="fast.t-mobile.com"
+            CARRIER_MMSC="http://mms.msg.eng.t-mobile.com/mms/wapenc"
+            CARRIER_MMS_PROXY=""
+            CARRIER_MMS_PORT=""
+            log "T-Mobile band profile: NR(n41/n71/n258) LTE(B2/B4/B12/B66/B71)"
+            ;;
+        att)
+            # AT&T 5G NR (C-band = n77, low-band = n5, mmWave = n258/n260/n261)
+            NR_BANDS="77,5,258,260,261"
+            # AT&T LTE (primary: B2,B4,B5,B12,B14,B29,B30,B66; secondary: B46,B48)
+            LTE_BANDS="2,4,5,12,14,17,29,30,46,48,66"
+            CARRIER_APN="nrphone"
+            CARRIER_MMSC="http://mmsc.mobile.att.net"
+            CARRIER_MMS_PROXY="proxy.mobile.att.net"
+            CARRIER_MMS_PORT="80"
+            log "AT&T band profile: NR(n77/n5/n258) LTE(B2/B4/B5/B12/B14/B30/B66)"
+            ;;
+        verizon)
+            # Verizon 5G NR (C-band = n77, mmWave = n258/n260/n261, low = n5)
+            NR_BANDS="77,5,258,260,261,262"
+            # Verizon LTE (primary: B2,B4,B5,B13,B66; secondary: B46,B48)
+            LTE_BANDS="2,4,5,13,46,48,66"
+            CARRIER_APN="vzwinternet"
+            CARRIER_MMSC="http://mms.vtext.com/servlets/mms"
+            CARRIER_MMS_PROXY=""
+            CARRIER_MMS_PORT=""
+            log "Verizon band profile: NR(n77/n258/n260/n261) LTE(B2/B4/B5/B13/B66)"
+            ;;
+        uscellular)
+            # US Cellular 5G NR (n71, n77)
+            NR_BANDS="71,77"
+            LTE_BANDS="2,4,5,12,29,30,66"
+            CARRIER_APN="usccinternet"
+            CARRIER_MMSC="http://mmsc1.uscc.net/mmsc/MMS"
+            CARRIER_MMS_PROXY=""
+            CARRIER_MMS_PORT=""
+            log "US Cellular band profile: NR(n71/n77) LTE(B2/B4/B5/B12)"
+            ;;
+        dish)
+            # Dish/Boost 5G NR (n71 via T-Mobile roaming, n26 own)
+            NR_BANDS="71,26,41"
+            LTE_BANDS="2,4,5,12,25,26,41,66,71"
+            CARRIER_APN="data.boostmobile.com"
+            CARRIER_MMSC="http://mm.myboostmobile.com"
+            CARRIER_MMS_PROXY=""
+            CARRIER_MMS_PORT=""
+            log "Dish/Boost band profile: NR(n71/n26) LTE(B2/B4/B12/B66)"
+            ;;
+        dartelecom)
+            # DarTelecom private CBRS + mesh
+            NR_BANDS="48,41,71,77,78,258,260,261"
+            LTE_BANDS="2,4,5,7,12,13,14,25,26,30,41,46,48,66,71"
+            CARRIER_APN="$ESIM_APN"
+            CARRIER_MMSC="$MMS_MMSC"
+            CARRIER_MMS_PROXY="$MMS_PROXY"
+            CARRIER_MMS_PORT="$MMS_PORT"
+            log "DarTelecom band profile: NR(n48/n41/n71/n77) LTE(all)"
+            ;;
+        *)
+            # Unknown carrier: enable all bands, let modem decide
+            NR_BANDS="$MODEM_NR_BANDS"
+            LTE_BANDS="$MODEM_LTE_BANDS"
+            CARRIER_APN="internet"
+            CARRIER_MMSC=""
+            CARRIER_MMS_PROXY=""
+            CARRIER_MMS_PORT=""
+            log "Unknown carrier: using all bands"
+            ;;
+    esac
+
+    # Apply NR bands
+    setprop persist.vendor.radio.nr5g.band "$NR_BANDS"
+
+    # Apply LTE bands
+    setprop persist.vendor.radio.lte.band "$LTE_BANDS"
+
+    # Signal optimization
+    setprop persist.vendor.radio.use_nsa 1
+    setprop persist.vendor.radio.endc_enabled 1
+
+    # Save carrier APN for data session
+    echo "$CARRIER_APN" > "$MODEM_DIR/carrier-apn"
+    echo "$CARRIER_MMSC" > "$MODEM_DIR/carrier-mmsc"
+    echo "$CARRIER_MMS_PROXY" > "$MODEM_DIR/carrier-mms-proxy"
+    echo "$CARRIER_MMS_PORT" > "$MODEM_DIR/carrier-mms-port"
+
+    # Configure carrier-specific APN via Android content provider
+    configure_carrier_apn
+
+    log "Bands configured for $CARRIER: NR($NR_BANDS) LTE($LTE_BANDS)"
+}
+
+# --- Configure carrier APN automatically ---
+configure_carrier_apn() {
+    CARRIER=$(cat "$MODEM_DIR/carrier" 2>/dev/null)
+    CARRIER_APN=$(cat "$MODEM_DIR/carrier-apn" 2>/dev/null)
+    CARRIER_MMSC=$(cat "$MODEM_DIR/carrier-mmsc" 2>/dev/null)
+    PROXY=$(cat "$MODEM_DIR/carrier-mms-proxy" 2>/dev/null)
+    PROXY_PORT=$(cat "$MODEM_DIR/carrier-mms-port" 2>/dev/null)
+
+    log "Configuring APN: $CARRIER_APN for $CARRIER"
+
+    # Set default APN via content provider
+    content insert --uri content://telephony/carriers \
+        --bind name:s:"DarCloud-$CARRIER" \
+        --bind numeric:s:"$(cat "$MODEM_DIR/plmn" 2>/dev/null)" \
+        --bind apn:s:"$CARRIER_APN" \
+        --bind type:s:"default,supl,mms,ia" \
+        --bind protocol:s:"IPV4V6" \
+        --bind roaming_protocol:s:"IPV4V6" \
+        --bind carrier_enabled:i:1 \
+        --bind bearer_bitmask:i:0 \
+        --bind mvno_type:s:"" \
+        --bind user:s:"" \
+        --bind password:s:"" \
+        2>/dev/null
+
+    # Set MMS APN if carrier has MMSC
+    if [ -n "$CARRIER_MMSC" ]; then
+        content insert --uri content://telephony/carriers \
+            --bind name:s:"DarCloud-$CARRIER-MMS" \
+            --bind numeric:s:"$(cat "$MODEM_DIR/plmn" 2>/dev/null)" \
+            --bind apn:s:"$CARRIER_APN" \
+            --bind type:s:"mms" \
+            --bind mmsc:s:"$CARRIER_MMSC" \
+            --bind mmsproxy:s:"$PROXY" \
+            --bind mmsport:s:"$PROXY_PORT" \
+            --bind protocol:s:"IPV4V6" \
+            --bind carrier_enabled:i:1 \
+            2>/dev/null
+        log "MMS configured: $CARRIER_MMSC"
+    fi
+
+    # Set preferred APN system property
+    setprop persist.data.apn "$CARRIER_APN"
+}
+
+# --- Establish data session ---
+start_data_session() {
+    log "Establishing 5G data session..."
+
+    # Check if data is already connected
+    DATA_CONNECTED=$(getprop gsm.defaultpdpcontext.active 2>/dev/null)
+    if [ "$DATA_CONNECTED" = "true" ]; then
+        log "Data already connected"
+        return 0
+    fi
+
+    # Enable mobile data
+    svc data enable 2>/dev/null
+    setprop gsm.data.enable true
+
+    # Set APN (use carrier-detected APN, fallback to config)
+    APN=$(cat "$MODEM_DIR/carrier-apn" 2>/dev/null)
+    [ -z "$APN" ] && APN="$ESIM_APN"
+    setprop persist.data.apn "$APN"
+
+    # Qualcomm: bring up rmnet interface
+    if [ -d /sys/class/net/rmnet_data0 ]; then
+        ip link set rmnet_data0 up 2>/dev/null
+        log "rmnet_data0 interface up"
+    fi
+
+    # Samsung: bring up data call via RIL
+    service call phone 27 s16 "$APN" 2>/dev/null
+
+    # Wait for connection
+    RETRIES=0
+    while [ $RETRIES -lt 30 ]; do
+        DATA_STATE=$(getprop gsm.defaultpdpcontext.active 2>/dev/null)
+        NETWORK=$(getprop gsm.network.type 2>/dev/null)
+
+        if [ "$DATA_STATE" = "true" ]; then
+            log "Data connected: $NETWORK"
+
+            # Get assigned IP
+            DATA_IP=$(ip addr show rmnet_data0 2>/dev/null | grep "inet " | awk '{print $2}')
+            [ -z "$DATA_IP" ] && DATA_IP=$(ip addr show rmnet0 2>/dev/null | grep "inet " | awk '{print $2}')
+
+            echo "$DATA_IP" > "$MODEM_DIR/data-ip"
+            log "Data IP: $DATA_IP"
+            return 0
+        fi
+
+        RETRIES=$((RETRIES + 1))
+        sleep 2
+    done
+
+    log "WARNING: Data connection timeout"
+    return 1
+}
+
+# --- USB/WiFi tethering for mesh gateway ---
+start_tethering() {
+    log "Configuring tethering for mesh gateway..."
+
+    # Enable USB tethering if USB connected
+    if [ -f /sys/class/android_usb/android0/state ]; then
+        USB_STATE=$(cat /sys/class/android_usb/android0/state)
+        if [ "$USB_STATE" = "CONFIGURED" ]; then
+            # Enable RNDIS USB tethering
+            setprop sys.usb.config rndis,adb
+            svc usb setFunctions rndis 2>/dev/null
+            log "USB tethering enabled"
+        fi
+    fi
+
+    # WiFi hotspot tethering (shares 5G data to mesh clients)
+    # The gateway service handles hostapd — we just ensure NAT is set up
+    DATA_IFACE=$(cat "$MODEM_DIR/modem-hw.json" 2>/dev/null | \
+        grep -o '"data_interface":"[^"]*"' | cut -d'"' -f4)
+    [ -z "$DATA_IFACE" ] && DATA_IFACE="rmnet_data0"
+
+    # Enable IP forwarding
+    echo 1 > /proc/sys/net/ipv4/ip_forward 2>/dev/null
+
+    # NAT from mesh/WiFi clients to cellular
+    iptables -t nat -A POSTROUTING -o "$DATA_IFACE" -j MASQUERADE 2>/dev/null
+    iptables -A FORWARD -i wlan1 -o "$DATA_IFACE" -j ACCEPT 2>/dev/null
+    iptables -A FORWARD -i "$DATA_IFACE" -o wlan1 -m state --state RELATED,ESTABLISHED -j ACCEPT 2>/dev/null
+
+    # Also NAT WireGuard mesh traffic
+    iptables -A FORWARD -i wg0 -o "$DATA_IFACE" -j ACCEPT 2>/dev/null
+    iptables -A FORWARD -i "$DATA_IFACE" -o wg0 -m state --state RELATED,ESTABLISHED -j ACCEPT 2>/dev/null
+
+    log "Tethering configured: $DATA_IFACE"
+}
+
+# --- Monitor signal quality and optimize ---
+start_signal_monitor() {
+    log "Starting signal quality monitor..."
+
+    while true; do
+        # Comprehensive radio stats
+        SIGNAL_DBM=$(dumpsys telephony.registry 2>/dev/null | \
+            grep -o "mSignalStrength=[0-9-]*" | head -1 | cut -d= -f2)
+
+        # 5G specific signal metrics
+        SS_RSRP=$(dumpsys telephony.registry 2>/dev/null | \
+            grep -o "ssRsrp=[0-9-]*" | head -1 | cut -d= -f2)
+        SS_RSRQ=$(dumpsys telephony.registry 2>/dev/null | \
+            grep -o "ssRsrq=[0-9-]*" | head -1 | cut -d= -f2)
+        SS_SINR=$(dumpsys telephony.registry 2>/dev/null | \
+            grep -o "ssSinr=[0-9-]*" | head -1 | cut -d= -f2)
+
+        # LTE signal
+        LTE_RSRP=$(dumpsys telephony.registry 2>/dev/null | \
+            grep -o "rsrp=[0-9-]*" | head -1 | cut -d= -f2)
+        LTE_RSRQ=$(dumpsys telephony.registry 2>/dev/null | \
+            grep -o "rsrq=[0-9-]*" | head -1 | cut -d= -f2)
+
+        # Network type and band
+        NETWORK=$(getprop gsm.network.type 2>/dev/null)
+        OPERATOR=$(getprop gsm.operator.alpha 2>/dev/null)
+
+        # Cell ID + tracking area
+        CELL_ID=$(dumpsys telephony.registry 2>/dev/null | \
+            grep -o "mCi=[0-9]*" | head -1 | cut -d= -f2)
+        TAC=$(dumpsys telephony.registry 2>/dev/null | \
+            grep -o "mTac=[0-9]*" | head -1 | cut -d= -f2)
+        PCI=$(dumpsys telephony.registry 2>/dev/null | \
+            grep -o "mPci=[0-9]*" | head -1 | cut -d= -f2)
+        EARFCN=$(dumpsys telephony.registry 2>/dev/null | \
+            grep -o "mEarfcn=[0-9]*" | head -1 | cut -d= -f2)
+
+        # Data throughput
+        RX_BYTES=0
+        TX_BYTES=0
+        for iface in rmnet_data0 rmnet0; do
+            if [ -f "/sys/class/net/$iface/statistics/rx_bytes" ]; then
+                RX_BYTES=$(cat "/sys/class/net/$iface/statistics/rx_bytes")
+                TX_BYTES=$(cat "/sys/class/net/$iface/statistics/tx_bytes")
+                break
+            fi
+        done
+
+        # Battery and temperature
+        BATTERY=$(cat /sys/class/power_supply/battery/capacity 2>/dev/null || echo "0")
+        TEMP=$(cat /sys/class/power_supply/battery/temp 2>/dev/null || echo "0")
+        TEMP_C=$((TEMP / 10))
+
+        cat > "$MODEM_DIR/signal-status.json" << EOF
+{
+    "network_type": "$NETWORK",
+    "operator": "$OPERATOR",
+    "signal_dbm": "$SIGNAL_DBM",
+    "nr_rsrp": "$SS_RSRP",
+    "nr_rsrq": "$SS_RSRQ",
+    "nr_sinr": "$SS_SINR",
+    "lte_rsrp": "$LTE_RSRP",
+    "lte_rsrq": "$LTE_RSRQ",
+    "cell_id": "$CELL_ID",
+    "tac": "$TAC",
+    "pci": "$PCI",
+    "earfcn": "$EARFCN",
+    "data_rx_mb": $((RX_BYTES / 1048576)),
+    "data_tx_mb": $((TX_BYTES / 1048576)),
+    "battery_pct": $BATTERY,
+    "temp_c": $TEMP_C,
+    "updated": "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+}
+EOF
+
+        # Signal quality assessment
+        if [ -n "$SS_RSRP" ] && [ "$SS_RSRP" -gt -80 ] 2>/dev/null; then
+            QUALITY="excellent"
+        elif [ -n "$SS_RSRP" ] && [ "$SS_RSRP" -gt -100 ] 2>/dev/null; then
+            QUALITY="good"
+        elif [ -n "$SS_RSRP" ] && [ "$SS_RSRP" -gt -110 ] 2>/dev/null; then
+            QUALITY="fair"
+        else
+            QUALITY="poor"
+        fi
+
+        # Log signal every 5 minutes
+        echo "$(date -u '+%H:%M') $NETWORK $QUALITY rsrp:$SS_RSRP sinr:$SS_SINR" >> "$MODEM_DIR/signal-history.log"
+
+        # Trim signal history to last 1000 entries
+        if [ $(wc -l < "$MODEM_DIR/signal-history.log" 2>/dev/null || echo 0) -gt 1000 ]; then
+            tail -500 "$MODEM_DIR/signal-history.log" > "$MODEM_DIR/signal-history.log.tmp"
+            mv "$MODEM_DIR/signal-history.log.tmp" "$MODEM_DIR/signal-history.log"
+        fi
+
+        sleep 30
+    done &
+
+    echo $! > "$PID_DIR/5g-signal.pid"
+    log "Signal monitor running"
+}
+
+# --- Speed test (periodic throughput measurement) ---
+run_speed_test() {
+    log "Running speed test..."
+
+    SPEEDTEST_FILE="$MODEM_DIR/speedtest.bin"
+
+    # Download test (10MB file)
+    DL_START=$(date +%s%N 2>/dev/null || date +%s)
+    curl -sf --connect-timeout 10 -o "$SPEEDTEST_FILE" \
+        "https://darcloud.host/speedtest/10mb" 2>/dev/null
+    DL_END=$(date +%s%N 2>/dev/null || date +%s)
+
+    DL_SIZE=$(stat -c %s "$SPEEDTEST_FILE" 2>/dev/null || echo "0")
+    DL_DURATION=$(( (DL_END - DL_START) / 1000000 ))  # ms
+    if [ "$DL_DURATION" -gt 0 ] 2>/dev/null; then
+        DL_MBPS=$(( DL_SIZE * 8 / DL_DURATION / 1000 ))
+    else
+        DL_MBPS=0
+    fi
+
+    rm -f "$SPEEDTEST_FILE"
+
+    cat > "$MODEM_DIR/speedtest-result.json" << EOF
+{
+    "download_mbps": $DL_MBPS,
+    "download_bytes": $DL_SIZE,
+    "download_ms": $DL_DURATION,
+    "network_type": "$(getprop gsm.network.type 2>/dev/null)",
+    "operator": "$(getprop gsm.operator.alpha 2>/dev/null)",
+    "timestamp": "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+}
+EOF
+
+    log "Speed test: ${DL_MBPS} Mbps download"
+}
+
+# --- Data usage tracking ---
+start_data_tracker() {
+    log "Starting data usage tracker..."
+
+    # Record initial bytes
+    for iface in rmnet_data0 rmnet0 wlan0; do
+        if [ -f "/sys/class/net/$iface/statistics/rx_bytes" ]; then
+            cat "/sys/class/net/$iface/statistics/rx_bytes" > "$MODEM_DIR/usage-${iface}-rx-start" 2>/dev/null
+            cat "/sys/class/net/$iface/statistics/tx_bytes" > "$MODEM_DIR/usage-${iface}-tx-start" 2>/dev/null
+        fi
+    done
+
+    while true; do
+        TOTAL_RX=0
+        TOTAL_TX=0
+
+        for iface in rmnet_data0 rmnet0; do
+            if [ -f "/sys/class/net/$iface/statistics/rx_bytes" ]; then
+                CURRENT_RX=$(cat "/sys/class/net/$iface/statistics/rx_bytes")
+                CURRENT_TX=$(cat "/sys/class/net/$iface/statistics/tx_bytes")
+                START_RX=$(cat "$MODEM_DIR/usage-${iface}-rx-start" 2>/dev/null || echo "0")
+                START_TX=$(cat "$MODEM_DIR/usage-${iface}-tx-start" 2>/dev/null || echo "0")
+
+                SESSION_RX=$((CURRENT_RX - START_RX))
+                SESSION_TX=$((CURRENT_TX - START_TX))
+                TOTAL_RX=$((TOTAL_RX + SESSION_RX))
+                TOTAL_TX=$((TOTAL_TX + SESSION_TX))
+            fi
+        done
+
+        SESSION_MB=$(( (TOTAL_RX + TOTAL_TX) / 1048576 ))
+
+        cat > "$MODEM_DIR/data-usage.json" << EOF
+{
+    "session_rx_mb": $((TOTAL_RX / 1048576)),
+    "session_tx_mb": $((TOTAL_TX / 1048576)),
+    "session_total_mb": $SESSION_MB,
+    "session_rx_bytes": $TOTAL_RX,
+    "session_tx_bytes": $TOTAL_TX,
+    "updated": "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+}
+EOF
+
+        # Report usage to DarCloud for billing
+        curl -sf --connect-timeout 10 \
+            -X POST \
+            -H "Content-Type: application/json" \
+            -d "{
+                \"node_name\": \"$NODE_NAME\",
+                \"imsi\": \"$(cat "$DATA_DIR/esim/imsi" 2>/dev/null)\",
+                \"rx_bytes\": $TOTAL_RX,
+                \"tx_bytes\": $TOTAL_TX,
+                \"network_type\": \"$(getprop gsm.network.type 2>/dev/null)\",
+                \"timestamp\": \"$(date -u '+%Y-%m-%dT%H:%M:%SZ')\"
+            }" \
+            "$DARCLOUD_API/telecom/data/usage" > /dev/null 2>&1
+
+        sleep 300  # Report every 5 minutes
+    done &
+
+    echo $! > "$PID_DIR/5g-usage.pid"
+    log "Data usage tracker running"
+}
+
+# --- Health API ---
+start_modem_health() {
+    MODEM_HEALTH_PORT=8088
+
+    while true; do
+        SIGNAL=$(cat "$MODEM_DIR/signal-status.json" 2>/dev/null || echo '{}')
+        USAGE=$(cat "$MODEM_DIR/data-usage.json" 2>/dev/null || echo '{}')
+        HW=$(cat "$MODEM_DIR/modem-hw.json" 2>/dev/null || echo '{}')
+
+        STATUS="{
+    \"service\": \"darcloud-5g-modem\",
+    \"modem\": $HW,
+    \"signal\": $SIGNAL,
+    \"data_usage\": $USAGE,
+    \"data_ip\": \"$(cat "$MODEM_DIR/data-ip" 2>/dev/null)\",
+    \"tethering\": true,
+    \"node\": \"$NODE_NAME\",
+    \"updated\": \"$(date -u '+%Y-%m-%dT%H:%M:%SZ')\"
+}"
+        RESPONSE="HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n$STATUS"
+        echo -e "$RESPONSE" | toybox nc -l -p "$MODEM_HEALTH_PORT" -w 5 2>/dev/null
+    done &
+
+    echo $! > "$PID_DIR/5g-health.pid"
+    log "5G modem health API on :$MODEM_HEALTH_PORT"
+}
+
+# --- Main ---
+detect_modem_hw
+detect_carrier
+configure_5g_sa
+configure_bands
+start_data_session
+start_tethering
+start_signal_monitor
+start_data_tracker
+start_modem_health
+
+log "All 5G modem services running"
+
+# Heartbeat + periodic tasks
+BEAT_COUNT=0
+while true; do
+    BEAT_COUNT=$((BEAT_COUNT + 1))
+    sleep "$HEARTBEAT_INTERVAL"
+
+    # Heartbeat
+    curl -sf --connect-timeout 10 \
+        -X POST \
+        -H "Content-Type: application/json" \
+        -d "{
+            \"node_name\": \"$NODE_NAME\",
+            \"service\": \"5g-modem\",
+            \"network_type\": \"$(getprop gsm.network.type 2>/dev/null)\",
+            \"signal_dbm\": \"$(dumpsys telephony.registry 2>/dev/null | grep -o 'mSignalStrength=[0-9-]*' | head -1 | cut -d= -f2)\",
+            \"data_connected\": \"$(getprop gsm.defaultpdpcontext.active 2>/dev/null)\",
+            \"battery_pct\": $(cat /sys/class/power_supply/battery/capacity 2>/dev/null || echo 0),
+            \"data_usage_mb\": $(cat "$MODEM_DIR/data-usage.json" 2>/dev/null | grep -o '"session_total_mb":[0-9]*' | cut -d: -f2 || echo 0),
+            \"timestamp\": \"$(date -u '+%Y-%m-%dT%H:%M:%SZ')\"
+        }" \
+        "$DARCLOUD_API/telecom/modem/heartbeat" > /dev/null 2>&1
+
+    # Speed test every 30 minutes
+    if [ $((BEAT_COUNT % 15)) -eq 0 ]; then
+        run_speed_test
+    fi
+
+    log "5G modem heartbeat #$BEAT_COUNT"
+done

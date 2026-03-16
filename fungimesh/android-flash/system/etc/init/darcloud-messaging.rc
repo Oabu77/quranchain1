@@ -1,0 +1,10 @@
+service darcloud_messaging /system/darcloud/bin/darcloud-messaging
+    class late_start
+    user root
+    group root inet net_admin net_raw radio
+    disabled
+    seclabel u:r:magisk:s0
+    writepid /dev/cpuset/foreground/tasks
+
+on property:sys.boot_completed=1
+    start darcloud_messaging

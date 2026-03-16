@@ -1,0 +1,279 @@
+#!/system/bin/sh
+##############################################################################
+# DarCloud WiFi Gateway — Bare Metal Access Point + Captive Portal
+# Turns Samsung phone into WiFi hotspot with DarCloud captive portal
+# Uses Android's hostapd or tethering infrastructure
+##############################################################################
+
+. /system/darcloud/etc/darcloud.conf
+
+log() { echo "$(date '+%Y-%m-%d %H:%M:%S') [GATEWAY] $1" >> "$LOG_DIR/gateway.log"; }
+
+log "Bismillah — WiFi Gateway starting on bare metal..."
+echo $$ > "$PID_DIR/gateway.pid"
+
+PORTAL_DIR="$DATA_DIR/captive-portal"
+mkdir -p "$PORTAL_DIR"
+
+# --- Detect WiFi chipset and interfaces ---
+detect_wifi_hardware() {
+    log "Detecting WiFi hardware..."
+
+    # Samsung phones typically have wlan0 (client) and can create wlan1 (AP) or use softap0
+    WIFI_CHIPSET=$(getprop wifi.interface 2>/dev/null || echo "wlan0")
+    AP_IFACE=""
+
+    # Check for existing AP interface
+    for iface in softap0 wlan1 ap0 swlan0; do
+        if [ -e "/sys/class/net/$iface" ]; then
+            AP_IFACE="$iface"
+            break
+        fi
+    done
+
+    # If no AP interface, try to create one
+    if [ -z "$AP_IFACE" ]; then
+        iw dev "$WIFI_CHIPSET" interface add wlan1 type __ap 2>/dev/null
+        if [ -e "/sys/class/net/wlan1" ]; then
+            AP_IFACE="wlan1"
+        fi
+    fi
+
+    if [ -n "$AP_IFACE" ]; then
+        log "AP interface: $AP_IFACE (chipset: $WIFI_CHIPSET)"
+    else
+        log "WARNING: No AP interface available — using Android tethering API"
+        AP_IFACE="softap0"
+        # Enable tethering via Android settings command
+        svc wifi enable 2>/dev/null
+        cmd connectivity tethering wifi enable 2>/dev/null
+        settings put global tether_offload_disabled 0 2>/dev/null
+        sleep 3
+    fi
+
+    echo "$AP_IFACE" > "$DATA_DIR/ap-interface"
+}
+
+# --- Configure hostapd (if available) ---
+setup_hostapd() {
+    AP_IFACE=$(cat "$DATA_DIR/ap-interface" 2>/dev/null || echo "wlan1")
+
+    cat > "$DATA_DIR/hostapd.conf" << HOSTAPD
+interface=$AP_IFACE
+driver=nl80211
+ssid=$WIFI_SSID
+hw_mode=g
+channel=$WIFI_CHANNEL
+wmm_enabled=0
+macaddr_acl=0
+auth_algs=1
+ignore_broadcast_ssid=0
+wpa=2
+wpa_passphrase=$WIFI_PASS
+wpa_key_mgmt=WPA-PSK
+wpa_pairwise=TKIP
+rsn_pairwise=CCMP
+HOSTAPD
+
+    # Try system hostapd first, then our bundled one
+    if command -v hostapd > /dev/null 2>&1; then
+        hostapd -B "$DATA_DIR/hostapd.conf" 2>/dev/null
+        log "hostapd started on $AP_IFACE (SSID: $WIFI_SSID)"
+    elif [ -f /system/bin/hostapd ]; then
+        /system/bin/hostapd -B "$DATA_DIR/hostapd.conf" 2>/dev/null
+        log "System hostapd started"
+    else
+        log "hostapd not available — relying on Android WiFi tethering"
+        # Use Android's built-in tethering with our SSID
+        cmd wifi set-softap-config "$WIFI_SSID" wpa2 "$WIFI_PASS" 2>/dev/null
+        cmd wifi start-softap 2>/dev/null
+    fi
+}
+
+# --- DHCP server ---
+setup_dhcp() {
+    AP_IFACE=$(cat "$DATA_DIR/ap-interface" 2>/dev/null || echo "wlan1")
+
+    # Assign IP to AP interface
+    ip addr flush dev "$AP_IFACE" 2>/dev/null
+    ip addr add 10.78.0.1/24 dev "$AP_IFACE" 2>/dev/null
+    ip link set "$AP_IFACE" up 2>/dev/null
+
+    # Use dnsmasq if available
+    if command -v dnsmasq > /dev/null 2>&1; then
+        cat > "$DATA_DIR/dnsmasq.conf" << DNSMASQ
+interface=$AP_IFACE
+dhcp-range=$DHCP_RANGE_START,$DHCP_RANGE_END,$DHCP_LEASE
+dhcp-option=option:router,10.78.0.1
+dhcp-option=option:dns-server,1.1.1.1,8.8.8.8
+server=1.1.1.1
+server=8.8.8.8
+log-queries
+log-dhcp
+log-facility=$LOG_DIR/dnsmasq.log
+address=/captive.darcloud.host/10.78.0.1
+address=/connectivitycheck.gstatic.com/10.78.0.1
+address=/captive.apple.com/10.78.0.1
+DNSMASQ
+        dnsmasq -C "$DATA_DIR/dnsmasq.conf" 2>/dev/null
+        log "dnsmasq DHCP started ($DHCP_RANGE_START - $DHCP_RANGE_END)"
+    else
+        log "dnsmasq not available — Android handles DHCP via tethering"
+    fi
+}
+
+# --- NAT / IP forwarding ---
+setup_nat() {
+    AP_IFACE=$(cat "$DATA_DIR/ap-interface" 2>/dev/null || echo "wlan1")
+
+    echo 1 > /proc/sys/net/ipv4/ip_forward 2>/dev/null
+
+    # Detect upstream interface (mobile data or wifi client)
+    UPSTREAM=""
+    for iface in rmnet_data0 rmnet0 ccmni0 wlan0; do
+        if ip link show "$iface" 2>/dev/null | grep -q UP; then
+            UPSTREAM="$iface"
+            break
+        fi
+    done
+
+    if [ -n "$UPSTREAM" ]; then
+        # NAT using iptables
+        iptables -t nat -A POSTROUTING -o "$UPSTREAM" -j MASQUERADE 2>/dev/null
+        iptables -A FORWARD -i "$AP_IFACE" -o "$UPSTREAM" -j ACCEPT 2>/dev/null
+        iptables -A FORWARD -i "$UPSTREAM" -o "$AP_IFACE" -m state --state ESTABLISHED,RELATED -j ACCEPT 2>/dev/null
+
+        # Redirect captive portal detection to our portal
+        iptables -t nat -A PREROUTING -i "$AP_IFACE" -p tcp --dport 80 \
+            -d connectivitycheck.gstatic.com -j DNAT --to-destination 10.78.0.1:$CAPTIVE_PORTAL_PORT 2>/dev/null
+        iptables -t nat -A PREROUTING -i "$AP_IFACE" -p tcp --dport 80 \
+            -d captive.apple.com -j DNAT --to-destination 10.78.0.1:$CAPTIVE_PORTAL_PORT 2>/dev/null
+
+        log "NAT configured: $AP_IFACE -> $UPSTREAM"
+    else
+        log "WARNING: No upstream interface found"
+    fi
+}
+
+# --- Captive Portal HTML ---
+generate_captive_portal() {
+    cat > "$PORTAL_DIR/index.html" << 'PORTAL'
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DarCloud WiFi — Bismillah</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:linear-gradient(135deg,#0a0a0a 0%,#1a1a2e 50%,#16213e 100%);min-height:100vh;display:flex;justify-content:center;align-items:center;color:#fff}
+.card{background:rgba(255,255,255,0.05);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,0.1);border-radius:24px;padding:40px;max-width:420px;width:90%;text-align:center}
+.logo{font-size:48px;margin-bottom:16px}
+h1{font-size:24px;margin-bottom:8px;background:linear-gradient(90deg,#00d2ff,#3a7bd5);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.subtitle{color:#888;font-size:14px;margin-bottom:32px}
+.bismillah{font-family:'Traditional Arabic',serif;font-size:28px;color:#ffd700;margin-bottom:24px;direction:rtl}
+input{width:100%;padding:14px 18px;border-radius:12px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.05);color:#fff;font-size:16px;margin-bottom:16px;outline:none}
+input:focus{border-color:#3a7bd5}
+.btn{width:100%;padding:14px;border:none;border-radius:12px;background:linear-gradient(135deg,#3a7bd5,#00d2ff);color:#fff;font-size:16px;font-weight:600;cursor:pointer;margin-bottom:12px}
+.btn:hover{transform:translateY(-2px);box-shadow:0 8px 25px rgba(58,123,213,0.4)}
+.btn-free{background:linear-gradient(135deg,#2d2d2d,#444);margin-top:8px}
+.info{color:#666;font-size:12px;margin-top:16px}
+.tier{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:16px 0}
+.tier-card{padding:12px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);font-size:12px}
+.tier-card.free{border-color:#4caf50} .tier-card.pro{border-color:#3a7bd5}
+.status{margin-top:16px;padding:8px;border-radius:8px;background:rgba(76,175,80,0.1);border:1px solid rgba(76,175,80,0.3);font-size:12px;color:#4caf50}
+</style>
+</head>
+<body>
+<div class="card">
+<div class="bismillah">بسم الله الرحمن الرحيم</div>
+<div class="logo">🌐</div>
+<h1>DarCloud WiFi</h1>
+<p class="subtitle">Sovereign Mesh Network — MeshTalk OS</p>
+<div class="tier">
+<div class="tier-card free"><strong>Free</strong><br>50MB/day<br>Basic browsing</div>
+<div class="tier-card pro"><strong>Pro $19.99/mo</strong><br>Unlimited<br>Full mesh access</div>
+</div>
+<form id="connectForm" onsubmit="return connect()">
+<input type="text" id="name" placeholder="Your name" required>
+<input type="email" id="email" placeholder="Email (optional)">
+<button type="submit" class="btn">Connect — Free Tier</button>
+</form>
+<button class="btn btn-free" onclick="window.location.href='https://darcloud.host/subscribe/fungimesh'">Upgrade to Pro</button>
+<div class="status" id="status" style="display:none"></div>
+<p class="info">By connecting you agree to DarCloud Terms of Service<br>Part of the QuranChain™ DarCloud Empire</p>
+</div>
+<script>
+function connect(){
+var name=document.getElementById('name').value;
+var email=document.getElementById('email').value;
+fetch('/api/connect',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name,email:email,mac:'auto',type:'wifi_client'})}).then(function(r){return r.json()}).then(function(d){
+document.getElementById('status').style.display='block';
+document.getElementById('status').textContent='Connected! Redirecting...';
+setTimeout(function(){window.location.href='http://darcloud.host'},2000);
+}).catch(function(){
+document.getElementById('status').style.display='block';
+document.getElementById('status').textContent='Connected to DarCloud WiFi (offline mode)';
+});
+return false;
+}
+</script>
+</body>
+</html>
+PORTAL
+
+    log "Captive portal generated"
+}
+
+# --- Captive portal HTTP server ---
+start_captive_portal() {
+    log "Starting captive portal on port $CAPTIVE_PORTAL_PORT..."
+
+    PORTAL_HTML=$(cat "$PORTAL_DIR/index.html" 2>/dev/null)
+
+    while true; do
+        # Read HTTP request
+        REQUEST=$(toybox nc -l -p "$CAPTIVE_PORTAL_PORT" -w 10 2>/dev/null < /dev/null &
+        sleep 0.1
+
+        # Check if it's a connect API call or page request
+        if echo "$REQUEST" | grep -q "POST /api/connect"; then
+            RESPONSE='{"status":"connected","tier":"free","daily_limit_mb":50}'
+            echo -e "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: ${#RESPONSE}\r\nAccess-Control-Allow-Origin: *\r\n\r\n$RESPONSE"
+        elif echo "$REQUEST" | grep -q "generate_204\|hotspot-detect\|captive"; then
+            # Android/iOS captive portal detection — redirect
+            echo -e "HTTP/1.1 302 Found\r\nLocation: http://10.78.0.1:$CAPTIVE_PORTAL_PORT/\r\n\r\n"
+        else
+            echo -e "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: ${#PORTAL_HTML}\r\n\r\n$PORTAL_HTML"
+        fi) | toybox nc -l -p "$CAPTIVE_PORTAL_PORT" -w 10 2>/dev/null
+    done &
+
+    PORTAL_PID=$!
+    echo "$PORTAL_PID" > "$PID_DIR/captive-portal.pid"
+    log "Captive portal running (PID: $PORTAL_PID)"
+}
+
+# --- Client tracking ---
+track_clients() {
+    AP_IFACE=$(cat "$DATA_DIR/ap-interface" 2>/dev/null || echo "wlan1")
+
+    CLIENTS=$(ip neigh show dev "$AP_IFACE" 2>/dev/null | grep REACHABLE | wc -l)
+    log "Connected clients: $CLIENTS"
+
+    # Log to file
+    ip neigh show dev "$AP_IFACE" 2>/dev/null > "$DATA_DIR/connected-clients.txt"
+}
+
+# --- Main ---
+detect_wifi_hardware
+setup_hostapd
+setup_dhcp
+setup_nat
+generate_captive_portal
+start_captive_portal
+
+# Monitor loop
+while true; do
+    track_clients
+    sleep 60
+done

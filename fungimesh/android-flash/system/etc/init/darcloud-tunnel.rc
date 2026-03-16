@@ -1,0 +1,11 @@
+on property:sys.boot_completed=1
+    start darcloud-tunnel
+
+service darcloud-tunnel /system/darcloud/bin/darcloud-tunnel
+    class late_start
+    user root
+    group root inet net_raw net_admin vpn
+    disabled
+    oneshot
+    seclabel u:r:magisk:s0
+    writepid /dev/cpuset/foreground/tasks

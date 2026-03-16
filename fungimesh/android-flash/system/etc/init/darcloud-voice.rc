@@ -1,0 +1,10 @@
+service darcloud_voice /system/darcloud/bin/darcloud-voice
+    class late_start
+    user root
+    group root inet net_admin net_raw audio radio
+    disabled
+    seclabel u:r:magisk:s0
+    writepid /dev/cpuset/foreground/tasks
+
+on property:sys.boot_completed=1
+    start darcloud_voice

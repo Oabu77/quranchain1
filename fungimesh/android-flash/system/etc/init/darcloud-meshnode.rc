@@ -1,0 +1,14 @@
+# DarCloud FungiMesh Node — Android init service
+# Runs mesh routing on bare hardware via Android init system
+
+service darcloud_meshnode /system/darcloud/bin/darcloud-meshnode
+    class late_start
+    user root
+    group root inet net_admin net_raw
+    disabled
+    oneshot
+    seclabel u:r:shell:s0
+    writepid /dev/cpuset/system-background/tasks
+
+on property:darcloud.meshnode.start=1
+    start darcloud_meshnode

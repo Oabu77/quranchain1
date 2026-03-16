@@ -1,0 +1,679 @@
+#!/system/bin/sh
+##############################################################################
+# DarCloud Tunnel Connector — Peer-to-Peer WireGuard Tunnel Manager
+# Active tunnel establishment, NAT traversal, peer health monitoring,
+# dynamic peer exchange, tunnel failover, bandwidth tracking
+# Connects phone to ALL DarCloud mesh peers through encrypted tunnels
+# Runs directly on Android Linux kernel
+##############################################################################
+
+. /system/darcloud/etc/darcloud.conf
+
+log() { echo "$(date '+%Y-%m-%d %H:%M:%S') [TUNNEL] $1" >> "$LOG_DIR/tunnel.log"; }
+
+log "Bismillah — Tunnel Connector starting..."
+echo $$ > "$PID_DIR/tunnel.pid"
+
+TUNNEL_DIR="$DATA_DIR/tunnels"
+PEERS_DIR="$TUNNEL_DIR/peers"
+METRICS_DIR="$TUNNEL_DIR/metrics"
+mkdir -p "$TUNNEL_DIR" "$PEERS_DIR" "$METRICS_DIR"
+
+NODE_NAME=$(cat "$MESH_DIR/node.conf" 2>/dev/null | grep NODE_NAME | cut -d= -f2)
+[ -z "$NODE_NAME" ] && NODE_NAME="mobile-$(getprop ro.serialno 2>/dev/null | tail -c 9)"
+
+PRIVATE_KEY=$(cat "$WG_DIR/privatekey" 2>/dev/null)
+PUBLIC_KEY=$(cat "$WG_DIR/publickey" 2>/dev/null)
+
+###############################################################################
+# PHASE 1: NAT Traversal & External Endpoint Discovery
+###############################################################################
+
+discover_external_endpoint() {
+    log "Discovering external endpoint (NAT traversal)..."
+
+    # Method 1: STUN query (lightweight, no dependency)
+    # Send STUN binding request to public STUN server
+    EXTERNAL_IP=""
+
+    # Try multiple STUN/public IP services
+    EXTERNAL_IP=$(curl -sf --connect-timeout 5 "https://api.ipify.org" 2>/dev/null)
+    [ -z "$EXTERNAL_IP" ] && EXTERNAL_IP=$(curl -sf --connect-timeout 5 "https://ifconfig.me" 2>/dev/null)
+    [ -z "$EXTERNAL_IP" ] && EXTERNAL_IP=$(curl -sf --connect-timeout 5 "https://checkip.amazonaws.com" 2>/dev/null | tr -d '\n')
+
+    if [ -z "$EXTERNAL_IP" ]; then
+        # Fallback: use carrier gateway IP
+        EXTERNAL_IP=$(ip route get 1.1.1.1 2>/dev/null | grep -o "src [0-9.]*" | awk '{print $2}')
+    fi
+
+    # Determine NAT type
+    LOCAL_IP=$(ip addr show wlan0 2>/dev/null | grep "inet " | awk '{print $2}' | cut -d/ -f1)
+    [ -z "$LOCAL_IP" ] && LOCAL_IP=$(ip addr show rmnet_data0 2>/dev/null | grep "inet " | awk '{print $2}' | cut -d/ -f1)
+
+    NAT_TYPE="unknown"
+    if [ "$LOCAL_IP" = "$EXTERNAL_IP" ]; then
+        NAT_TYPE="none"
+    elif echo "$LOCAL_IP" | grep -qE "^(10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.)"; then
+        NAT_TYPE="symmetric"  # Most carrier NAT
+        # Try UDP hole punching port
+        EXTERNAL_PORT=$(curl -sf --connect-timeout 5 \
+            "$DARCLOUD_API/mesh/stun?node=$NODE_NAME&port=$WIREGUARD_PORT" 2>/dev/null | \
+            grep -o '"external_port":[0-9]*' | cut -d: -f2)
+        [ -z "$EXTERNAL_PORT" ] && EXTERNAL_PORT="$WIREGUARD_PORT"
+    fi
+
+    ENDPOINT="${EXTERNAL_IP}:${EXTERNAL_PORT:-$WIREGUARD_PORT}"
+    echo "$ENDPOINT" > "$TUNNEL_DIR/external-endpoint"
+    echo "$EXTERNAL_IP" > "$TUNNEL_DIR/external-ip"
+    echo "$NAT_TYPE" > "$TUNNEL_DIR/nat-type"
+
+    log "External endpoint: $ENDPOINT (NAT: $NAT_TYPE, local: $LOCAL_IP)"
+}
+
+###############################################################################
+# PHASE 2: Register with Mesh Coordinator
+###############################################################################
+
+register_with_coordinator() {
+    log "Registering with mesh coordinator..."
+
+    ENDPOINT=$(cat "$TUNNEL_DIR/external-endpoint" 2>/dev/null)
+    MESH_IP=$(cat "$MESH_DIR/mesh-ip" 2>/dev/null)
+    NAT_TYPE=$(cat "$TUNNEL_DIR/nat-type" 2>/dev/null)
+
+    # Get device capabilities
+    MODEL=$(getprop ro.product.model 2>/dev/null)
+    NETWORK=$(getprop gsm.network.type 2>/dev/null)
+    BATTERY=$(cat /sys/class/power_supply/battery/capacity 2>/dev/null || echo "0")
+
+    RESPONSE=$(curl -sf --connect-timeout 15 \
+        -X POST \
+        -H "Content-Type: application/json" \
+        -d "{
+            \"node_id\": \"$NODE_NAME\",
+            \"node_type\": \"$NODE_TYPE\",
+            \"wireguard_pubkey\": \"$PUBLIC_KEY\",
+            \"wireguard_endpoint\": \"$ENDPOINT\",
+            \"mesh_ip\": \"$MESH_IP\",
+            \"listen_port\": $WIREGUARD_PORT,
+            \"nat_type\": \"$NAT_TYPE\",
+            \"capabilities\": [\"tunnel\", \"relay\", \"gateway\", \"voice\", \"messaging\", \"5g\"],
+            \"hardware\": \"$MODEL\",
+            \"network_type\": \"$NETWORK\",
+            \"battery_pct\": $BATTERY,
+            \"region\": \"$REGION\",
+            \"version\": \"1.0\"
+        }" \
+        "$DARCLOUD_API/mesh/connect" 2>/dev/null)
+
+    if [ -n "$RESPONSE" ]; then
+        echo "$RESPONSE" > "$TUNNEL_DIR/registration.json"
+
+        # Extract assigned mesh IP if server provides one
+        ASSIGNED_IP=$(echo "$RESPONSE" | grep -o '"mesh_ip":"[^"]*"' | cut -d'"' -f4)
+        if [ -n "$ASSIGNED_IP" ]; then
+            echo "$ASSIGNED_IP" > "$MESH_DIR/mesh-ip"
+            MESH_IP="$ASSIGNED_IP"
+            log "Assigned mesh IP: $MESH_IP"
+        fi
+
+        log "Registered with coordinator: $ENDPOINT"
+        return 0
+    fi
+
+    log "WARNING: Coordinator registration failed"
+    return 1
+}
+
+###############################################################################
+# PHASE 3: Fetch & Configure Peers
+###############################################################################
+
+fetch_peers() {
+    log "Fetching mesh peers..."
+
+    PEERS_JSON=$(curl -sf --connect-timeout 15 \
+        "$DARCLOUD_API/mesh/peers/$NODE_NAME" 2>/dev/null)
+
+    if [ -z "$PEERS_JSON" ]; then
+        log "WARNING: No peers received from coordinator"
+        return 1
+    fi
+
+    echo "$PEERS_JSON" > "$TUNNEL_DIR/peers-raw.json"
+
+    # Count peers
+    PEER_COUNT=$(echo "$PEERS_JSON" | grep -o '"pubkey"' | wc -l)
+    log "Received $PEER_COUNT peers from coordinator"
+
+    return 0
+}
+
+configure_wireguard_peers() {
+    log "Configuring WireGuard peers..."
+
+    PEERS_JSON=$(cat "$TUNNEL_DIR/peers-raw.json" 2>/dev/null)
+    [ -z "$PEERS_JSON" ] && return 1
+
+    MESH_IP=$(cat "$MESH_DIR/mesh-ip" 2>/dev/null)
+
+    # Build WireGuard config
+    cat > "$WG_DIR/wg0.conf" << WGEOF
+[Interface]
+PrivateKey = $PRIVATE_KEY
+Address = $MESH_IP/16
+ListenPort = $WIREGUARD_PORT
+WGEOF
+
+    # Parse each peer from JSON
+    # Format: {"peers":[{"node_id":"x","pubkey":"y","endpoint":"z","mesh_ip":"w","role":"r"},...]}
+    PEER_INDEX=0
+
+    # Extract arrays of values
+    PUBKEYS=$(echo "$PEERS_JSON" | grep -o '"pubkey":"[^"]*"' | cut -d'"' -f4)
+    ENDPOINTS=$(echo "$PEERS_JSON" | grep -o '"endpoint":"[^"]*"' | cut -d'"' -f4)
+    MESH_IPS=$(echo "$PEERS_JSON" | grep -o '"mesh_ip":"[^"]*"' | cut -d'"' -f4)
+    NODE_IDS=$(echo "$PEERS_JSON" | grep -o '"node_id":"[^"]*"' | cut -d'"' -f4)
+    ROLES=$(echo "$PEERS_JSON" | grep -o '"role":"[^"]*"' | cut -d'"' -f4)
+
+    # Save peer pubkeys list for iteration
+    echo "$PUBKEYS" > "$TUNNEL_DIR/peer-pubkeys.list"
+
+    # Process peers
+    echo "$PUBKEYS" | while IFS= read -r PEER_PUB; do
+        PEER_INDEX=$((PEER_INDEX + 1))
+
+        # Get corresponding fields (line by line)
+        PEER_EP=$(echo "$ENDPOINTS" | sed -n "${PEER_INDEX}p")
+        PEER_MESH=$(echo "$MESH_IPS" | sed -n "${PEER_INDEX}p")
+        PEER_NODE=$(echo "$NODE_IDS" | sed -n "${PEER_INDEX}p")
+        PEER_ROLE=$(echo "$ROLES" | sed -n "${PEER_INDEX}p")
+
+        # Skip ourselves
+        if [ "$PEER_PUB" = "$PUBLIC_KEY" ]; then
+            continue
+        fi
+
+        # Determine allowed IPs based on peer role
+        case "$PEER_ROLE" in
+            gateway|relay)
+                ALLOWED="0.0.0.0/0"  # Route all traffic through gateways
+                ;;
+            tower)
+                ALLOWED="$MESH_SUBNET"  # Full mesh access
+                ;;
+            *)
+                ALLOWED="${PEER_MESH}/32"  # Only peer's IP
+                ;;
+        esac
+
+        # Add peer to WireGuard config
+        cat >> "$WG_DIR/wg0.conf" << PEEREOF
+
+[Peer]
+# $PEER_NODE ($PEER_ROLE)
+PublicKey = $PEER_PUB
+Endpoint = $PEER_EP
+AllowedIPs = $ALLOWED
+PersistentKeepalive = 25
+PEEREOF
+
+        # Save peer info for health monitoring
+        cat > "$PEERS_DIR/$PEER_NODE.json" << PEERINFO
+{
+    "node_id": "$PEER_NODE",
+    "pubkey": "$PEER_PUB",
+    "endpoint": "$PEER_EP",
+    "mesh_ip": "$PEER_MESH",
+    "role": "$PEER_ROLE",
+    "allowed_ips": "$ALLOWED",
+    "connected_at": "$(date -u '+%Y-%m-%dT%H:%M:%SZ')",
+    "status": "pending",
+    "latency_ms": -1,
+    "handshake": "never"
+}
+PEERINFO
+
+        log "  Peer $PEER_INDEX: $PEER_NODE ($PEER_ROLE) -> $PEER_EP mesh:$PEER_MESH"
+    done
+
+    # Apply config to WireGuard interface
+    /system/darcloud/bin/wg syncconf wg0 "$WG_DIR/wg0.conf" 2>/dev/null
+
+    if [ $? -ne 0 ]; then
+        # Full reload if syncconf fails
+        ip link del wg0 2>/dev/null
+        ip link add dev wg0 type wireguard 2>/dev/null
+
+        if ! ip link show wg0 > /dev/null 2>&1; then
+            # Kernel module missing — boringtun fallback
+            if [ -x /system/darcloud/bin/boringtun ]; then
+                /system/darcloud/bin/boringtun wg0 --disable-drop-privileges &
+                sleep 2
+            fi
+        fi
+
+        /system/darcloud/bin/wg setconf wg0 "$WG_DIR/wg0.conf" 2>/dev/null
+        ip addr flush dev wg0 2>/dev/null
+        ip addr add "$MESH_IP/16" dev wg0 2>/dev/null
+        ip link set wg0 up 2>/dev/null
+    fi
+
+    # Enable forwarding
+    echo 1 > /proc/sys/net/ipv4/ip_forward 2>/dev/null
+
+    PEER_COUNT=$(/system/darcloud/bin/wg show wg0 2>/dev/null | grep -c "peer:" || echo "0")
+    log "WireGuard configured: $PEER_COUNT peers on wg0"
+}
+
+###############################################################################
+# PHASE 4: Tunnel Health Monitoring
+###############################################################################
+
+monitor_tunnel_health() {
+    log "Starting tunnel health monitor..."
+
+    while true; do
+        TOTAL_PEERS=0
+        ALIVE_PEERS=0
+        DEAD_PEERS=0
+
+        # Check each peer's WireGuard handshake
+        WG_DUMP=$(/system/darcloud/bin/wg show wg0 dump 2>/dev/null)
+
+        echo "$WG_DUMP" | while IFS=$'\t' read -r IFACE PUB PRE EP ALLOWED HANDSHAKE RX TX KEEPALIVE; do
+            # Skip interface line
+            [ "$IFACE" = "wg0" ] && continue
+            [ -z "$PUB" ] && continue
+
+            TOTAL_PEERS=$((TOTAL_PEERS + 1))
+
+            # Find peer info file
+            PEER_FILE=$(grep -rl "\"pubkey\": \"$PUB\"" "$PEERS_DIR/" 2>/dev/null | head -1)
+            [ -z "$PEER_FILE" ] && continue
+
+            PEER_NODE=$(basename "$PEER_FILE" .json)
+            NOW=$(date +%s)
+
+            # Check handshake freshness (WireGuard handshake = epoch seconds)
+            if [ "$HANDSHAKE" != "0" ] && [ -n "$HANDSHAKE" ]; then
+                HANDSHAKE_AGE=$((NOW - HANDSHAKE))
+
+                if [ "$HANDSHAKE_AGE" -lt 300 ]; then
+                    # Active: handshake within 5 minutes
+                    PEER_STATUS="connected"
+                    ALIVE_PEERS=$((ALIVE_PEERS + 1))
+                elif [ "$HANDSHAKE_AGE" -lt 900 ]; then
+                    PEER_STATUS="stale"
+                else
+                    PEER_STATUS="dead"
+                    DEAD_PEERS=$((DEAD_PEERS + 1))
+                fi
+            else
+                PEER_STATUS="no-handshake"
+                DEAD_PEERS=$((DEAD_PEERS + 1))
+            fi
+
+            # Measure latency via ping through WireGuard
+            PEER_MESH=$(cat "$PEER_FILE" 2>/dev/null | grep -o '"mesh_ip":"[^"]*"' | cut -d'"' -f4)
+            LATENCY=-1
+            if [ -n "$PEER_MESH" ]; then
+                PING_RESULT=$(ping -c 1 -W 3 -I wg0 "$PEER_MESH" 2>/dev/null | \
+                    grep -o "time=[0-9.]*" | cut -d= -f2)
+                if [ -n "$PING_RESULT" ]; then
+                    LATENCY="$PING_RESULT"
+                fi
+            fi
+
+            # Update peer status
+            cat > "$PEERS_DIR/$PEER_NODE.json.tmp" << PUPDATE
+{
+    "node_id": "$PEER_NODE",
+    "pubkey": "$PUB",
+    "endpoint": "$EP",
+    "mesh_ip": "$PEER_MESH",
+    "status": "$PEER_STATUS",
+    "latency_ms": $LATENCY,
+    "handshake_age_s": $HANDSHAKE_AGE,
+    "rx_bytes": $RX,
+    "tx_bytes": $TX,
+    "last_check": "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+}
+PUPDATE
+            mv "$PEERS_DIR/$PEER_NODE.json.tmp" "$PEERS_DIR/$PEER_NODE.json"
+
+            # Log metrics
+            echo "$(date -u '+%H:%M') $PEER_NODE $PEER_STATUS ${LATENCY}ms rx:$RX tx:$TX" >> "$METRICS_DIR/peer-health.log"
+        done
+
+        # Aggregate tunnel status
+        cat > "$TUNNEL_DIR/tunnel-status.json" << TSTATUS
+{
+    "total_peers": $TOTAL_PEERS,
+    "alive_peers": $ALIVE_PEERS,
+    "dead_peers": $DEAD_PEERS,
+    "wg_interface": "$(ip link show wg0 2>/dev/null | grep -c UP)",
+    "external_ip": "$(cat "$TUNNEL_DIR/external-ip" 2>/dev/null)",
+    "nat_type": "$(cat "$TUNNEL_DIR/nat-type" 2>/dev/null)",
+    "mesh_ip": "$(cat "$MESH_DIR/mesh-ip" 2>/dev/null)",
+    "updated": "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+}
+TSTATUS
+
+        # Trim metrics log
+        if [ $(wc -l < "$METRICS_DIR/peer-health.log" 2>/dev/null || echo 0) -gt 5000 ]; then
+            tail -2000 "$METRICS_DIR/peer-health.log" > "$METRICS_DIR/peer-health.log.tmp"
+            mv "$METRICS_DIR/peer-health.log.tmp" "$METRICS_DIR/peer-health.log"
+        fi
+
+        sleep 60  # Check health every minute
+    done &
+
+    echo $! > "$PID_DIR/tunnel-health.pid"
+    log "Tunnel health monitor running"
+}
+
+###############################################################################
+# PHASE 5: Dead Peer Recovery & NAT Hole Punching
+###############################################################################
+
+recover_dead_peers() {
+    log "Checking for dead peers to recover..."
+
+    for PEER_FILE in "$PEERS_DIR"/*.json; do
+        [ -f "$PEER_FILE" ] || continue
+
+        STATUS=$(grep -o '"status":"[^"]*"' "$PEER_FILE" | cut -d'"' -f4)
+        PEER_NODE=$(grep -o '"node_id":"[^"]*"' "$PEER_FILE" | cut -d'"' -f4)
+        PEER_PUB=$(grep -o '"pubkey":"[^"]*"' "$PEER_FILE" | cut -d'"' -f4)
+        PEER_EP=$(grep -o '"endpoint":"[^"]*"' "$PEER_FILE" | cut -d'"' -f4)
+
+        if [ "$STATUS" = "dead" ] || [ "$STATUS" = "no-handshake" ]; then
+            log "  Recovering dead peer: $PEER_NODE"
+
+            # Step 1: Re-fetch endpoint from coordinator (peer may have new IP)
+            NEW_EP=$(curl -sf --connect-timeout 10 \
+                "$DARCLOUD_API/mesh/peer-endpoint/$PEER_NODE" 2>/dev/null | \
+                grep -o '"endpoint":"[^"]*"' | cut -d'"' -f4)
+
+            if [ -n "$NEW_EP" ] && [ "$NEW_EP" != "$PEER_EP" ]; then
+                log "  Peer $PEER_NODE endpoint changed: $PEER_EP -> $NEW_EP"
+                /system/darcloud/bin/wg set wg0 peer "$PEER_PUB" \
+                    endpoint "$NEW_EP" \
+                    persistent-keepalive 25 2>/dev/null
+            fi
+
+            # Step 2: NAT hole punch — send empty UDP packet to trigger handshake
+            PUNCH_IP=$(echo "$PEER_EP" | cut -d: -f1)
+            PUNCH_PORT=$(echo "$PEER_EP" | cut -d: -f2)
+            if [ -n "$PUNCH_IP" ] && [ -n "$PUNCH_PORT" ]; then
+                echo "" | toybox nc -u "$PUNCH_IP" "$PUNCH_PORT" -w 1 2>/dev/null
+                log "  NAT hole punch sent to $PUNCH_IP:$PUNCH_PORT"
+            fi
+
+            # Step 3: Request relay through coordinator if direct fails
+            PEER_MESH=$(grep -o '"mesh_ip":"[^"]*"' "$PEER_FILE" | cut -d'"' -f4)
+            PING_OK=$(ping -c 1 -W 3 "$PEER_MESH" 2>/dev/null && echo "yes")
+
+            if [ -z "$PING_OK" ]; then
+                # Request relay node
+                RELAY=$(curl -sf --connect-timeout 10 \
+                    "$DARCLOUD_API/mesh/relay-request" \
+                    -X POST \
+                    -H "Content-Type: application/json" \
+                    -d "{
+                        \"source\": \"$NODE_NAME\",
+                        \"destination\": \"$PEER_NODE\",
+                        \"source_pubkey\": \"$PUBLIC_KEY\"
+                    }" 2>/dev/null)
+
+                RELAY_EP=$(echo "$RELAY" | grep -o '"relay_endpoint":"[^"]*"' | cut -d'"' -f4)
+                if [ -n "$RELAY_EP" ]; then
+                    /system/darcloud/bin/wg set wg0 peer "$PEER_PUB" \
+                        endpoint "$RELAY_EP" \
+                        persistent-keepalive 15 2>/dev/null
+                    log "  Routed $PEER_NODE through relay: $RELAY_EP"
+                fi
+            fi
+        fi
+    done
+}
+
+###############################################################################
+# PHASE 6: Dynamic Peer Addition (Hot-add without restart)
+###############################################################################
+
+check_new_peers() {
+    log "Checking for new peers..."
+
+    # Fetch current peer list from coordinator
+    CURRENT_PEERS=$(curl -sf --connect-timeout 10 \
+        "$DARCLOUD_API/mesh/peers/$NODE_NAME" 2>/dev/null)
+
+    [ -z "$CURRENT_PEERS" ] && return
+
+    # Compare with existing peers
+    NEW_PUBKEYS=$(echo "$CURRENT_PEERS" | grep -o '"pubkey":"[^"]*"' | cut -d'"' -f4)
+
+    echo "$NEW_PUBKEYS" | while IFS= read -r PUB; do
+        [ -z "$PUB" ] && continue
+        [ "$PUB" = "$PUBLIC_KEY" ] && continue
+
+        # Check if already configured
+        EXISTING=$(/system/darcloud/bin/wg show wg0 peers 2>/dev/null | grep "$PUB")
+
+        if [ -z "$EXISTING" ]; then
+            # Extract this peer's info
+            # Find the index of this pubkey in the JSON
+            PEER_LINE=$(echo "$CURRENT_PEERS" | grep -n "\"pubkey\":\"$PUB\"" | head -1 | cut -d: -f1)
+            PEER_EP=$(echo "$CURRENT_PEERS" | grep -o '"endpoint":"[^"]*"' | sed -n "${PEER_LINE}p" 2>/dev/null | cut -d'"' -f4)
+            PEER_MESH=$(echo "$CURRENT_PEERS" | grep -o '"mesh_ip":"[^"]*"' | sed -n "${PEER_LINE}p" 2>/dev/null | cut -d'"' -f4)
+            PEER_NODE=$(echo "$CURRENT_PEERS" | grep -o '"node_id":"[^"]*"' | sed -n "${PEER_LINE}p" 2>/dev/null | cut -d'"' -f4)
+
+            if [ -n "$PEER_EP" ]; then
+                # Hot-add peer to WireGuard (no restart needed!)
+                /system/darcloud/bin/wg set wg0 peer "$PUB" \
+                    endpoint "$PEER_EP" \
+                    allowed-ips "${PEER_MESH}/32" \
+                    persistent-keepalive 25 2>/dev/null
+
+                log "  NEW PEER added: $PEER_NODE ($PUB) at $PEER_EP"
+
+                # Save peer info
+                cat > "$PEERS_DIR/$PEER_NODE.json" << NEWPEER
+{
+    "node_id": "$PEER_NODE",
+    "pubkey": "$PUB",
+    "endpoint": "$PEER_EP",
+    "mesh_ip": "$PEER_MESH",
+    "status": "pending",
+    "connected_at": "$(date -u '+%Y-%m-%dT%H:%M:%SZ')",
+    "latency_ms": -1
+}
+NEWPEER
+            fi
+        fi
+    done
+
+    # Save updated peers JSON
+    echo "$CURRENT_PEERS" > "$TUNNEL_DIR/peers-raw.json"
+}
+
+###############################################################################
+# PHASE 7: Bandwidth & Tunnel Metrics
+###############################################################################
+
+collect_tunnel_metrics() {
+    WG_DUMP=$(/system/darcloud/bin/wg show wg0 dump 2>/dev/null)
+    TOTAL_RX=0
+    TOTAL_TX=0
+
+    echo "$WG_DUMP" | tail -n +2 | while IFS=$'\t' read -r PUB PRE EP ALLOWED HANDSHAKE RX TX KEEPALIVE; do
+        [ -z "$PUB" ] && continue
+        TOTAL_RX=$((TOTAL_RX + ${RX:-0}))
+        TOTAL_TX=$((TOTAL_TX + ${TX:-0}))
+    done
+
+    cat > "$METRICS_DIR/tunnel-bandwidth.json" << BWEOF
+{
+    "wg_rx_bytes": $TOTAL_RX,
+    "wg_tx_bytes": $TOTAL_TX,
+    "wg_rx_mb": $((TOTAL_RX / 1048576)),
+    "wg_tx_mb": $((TOTAL_TX / 1048576)),
+    "peer_count": $(/system/darcloud/bin/wg show wg0 2>/dev/null | grep -c "peer:" || echo 0),
+    "updated": "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+}
+BWEOF
+}
+
+###############################################################################
+# PHASE 8: Mesh Topology Sync
+###############################################################################
+
+sync_topology() {
+    log "Syncing mesh topology..."
+
+    TOPOLOGY=$(curl -sf --connect-timeout 15 \
+        "$DARCLOUD_API/mesh/topology" 2>/dev/null)
+
+    if [ -n "$TOPOLOGY" ]; then
+        echo "$TOPOLOGY" > "$TUNNEL_DIR/topology.json"
+
+        TOTAL_NODES=$(echo "$TOPOLOGY" | grep -o '"node_id"' | wc -l)
+        ONLINE_NODES=$(echo "$TOPOLOGY" | grep -o '"status":"online"' | wc -l)
+
+        log "Topology: $ONLINE_NODES/$TOTAL_NODES nodes online"
+    fi
+
+    # Fetch routing table
+    ROUTES=$(curl -sf --connect-timeout 10 \
+        "$DARCLOUD_API/mesh/routes/$NODE_NAME" 2>/dev/null)
+
+    if [ -n "$ROUTES" ]; then
+        echo "$ROUTES" > "$MESH_DIR/routes.json"
+
+        # Apply static routes through WireGuard
+        echo "$ROUTES" | grep -o '"destination":"[^"]*"' | cut -d'"' -f4 | while read DEST; do
+            NEXTHOP=$(echo "$ROUTES" | grep -A2 "\"destination\":\"$DEST\"" | \
+                grep -o '"next_hop":"[^"]*"' | cut -d'"' -f4)
+
+            if [ -n "$NEXTHOP" ] && [ "$DEST" != "$MESH_SUBNET" ]; then
+                ip route add "$DEST" via "$NEXTHOP" dev wg0 2>/dev/null
+            fi
+        done
+
+        log "Routes applied"
+    fi
+}
+
+###############################################################################
+# PHASE 9: Health API
+###############################################################################
+
+start_tunnel_health_api() {
+    TUNNEL_HEALTH_PORT=8089
+
+    while true; do
+        # Build comprehensive status
+        PEER_COUNT=$(/system/darcloud/bin/wg show wg0 peers 2>/dev/null | wc -l || echo "0")
+        ALIVE=$(ls "$PEERS_DIR"/ 2>/dev/null | while read F; do
+            grep -l '"status":"connected"' "$PEERS_DIR/$F" 2>/dev/null
+        done | wc -l)
+
+        STATUS="{
+    \"service\": \"darcloud-tunnel\",
+    \"node\": \"$NODE_NAME\",
+    \"external_endpoint\": \"$(cat "$TUNNEL_DIR/external-endpoint" 2>/dev/null)\",
+    \"nat_type\": \"$(cat "$TUNNEL_DIR/nat-type" 2>/dev/null)\",
+    \"mesh_ip\": \"$(cat "$MESH_DIR/mesh-ip" 2>/dev/null)\",
+    \"wg_interface\": \"$(ip link show wg0 2>/dev/null | grep -c UP || echo 0)\",
+    \"total_peers\": $PEER_COUNT,
+    \"alive_peers\": $ALIVE,
+    \"wg_rx_mb\": $(cat "$METRICS_DIR/tunnel-bandwidth.json" 2>/dev/null | grep -o '"wg_rx_mb":[0-9]*' | cut -d: -f2 || echo 0),
+    \"wg_tx_mb\": $(cat "$METRICS_DIR/tunnel-bandwidth.json" 2>/dev/null | grep -o '"wg_tx_mb":[0-9]*' | cut -d: -f2 || echo 0),
+    \"updated\": \"$(date -u '+%Y-%m-%dT%H:%M:%SZ')\"
+}"
+        RESPONSE="HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n$STATUS"
+        echo -e "$RESPONSE" | toybox nc -l -p "$TUNNEL_HEALTH_PORT" -w 5 2>/dev/null
+    done &
+
+    echo $! > "$PID_DIR/tunnel-health-api.pid"
+    log "Tunnel health API on :$TUNNEL_HEALTH_PORT"
+}
+
+###############################################################################
+# MAIN — Orchestrate all phases
+###############################################################################
+
+log "============================================"
+log "  DarCloud Tunnel Connector v1.0"
+log "  Node: $NODE_NAME"
+log "  Public Key: ${PUBLIC_KEY:0:20}..."
+log "============================================"
+
+# Phase 1: Discover our external endpoint
+discover_external_endpoint
+
+# Phase 2: Register with coordinator
+register_with_coordinator
+
+# Phase 3: Fetch and configure peers
+fetch_peers
+configure_wireguard_peers
+
+# Phase 4: Start health monitor
+monitor_tunnel_health
+
+# Phase 9: Health API
+start_tunnel_health_api
+
+log "Tunnel connector initialized — entering management loop"
+
+# === Management Loop ===
+LOOP_COUNT=0
+while true; do
+    LOOP_COUNT=$((LOOP_COUNT + 1))
+    sleep "$HEARTBEAT_INTERVAL"
+
+    # Every heartbeat: collect metrics + report
+    collect_tunnel_metrics
+
+    # Report tunnel status to API
+    curl -sf --connect-timeout 10 \
+        -X POST \
+        -H "Content-Type: application/json" \
+        -d "{
+            \"node_name\": \"$NODE_NAME\",
+            \"service\": \"tunnel\",
+            \"peer_count\": $(/system/darcloud/bin/wg show wg0 peers 2>/dev/null | wc -l || echo 0),
+            \"external_endpoint\": \"$(cat "$TUNNEL_DIR/external-endpoint" 2>/dev/null)\",
+            \"nat_type\": \"$(cat "$TUNNEL_DIR/nat-type" 2>/dev/null)\",
+            \"wg_rx_mb\": $(cat "$METRICS_DIR/tunnel-bandwidth.json" 2>/dev/null | grep -o '"wg_rx_mb":[0-9]*' | cut -d: -f2 || echo 0),
+            \"wg_tx_mb\": $(cat "$METRICS_DIR/tunnel-bandwidth.json" 2>/dev/null | grep -o '"wg_tx_mb":[0-9]*' | cut -d: -f2 || echo 0),
+            \"timestamp\": \"$(date -u '+%Y-%m-%dT%H:%M:%SZ')\"
+        }" \
+        "$DARCLOUD_API/mesh/heartbeat" > /dev/null 2>&1
+
+    # Every 5 loops (10 min): check for new peers (hot-add)
+    if [ $((LOOP_COUNT % 5)) -eq 0 ]; then
+        check_new_peers
+    fi
+
+    # Every 10 loops (20 min): recover dead peers
+    if [ $((LOOP_COUNT % 10)) -eq 0 ]; then
+        recover_dead_peers
+    fi
+
+    # Every 15 loops (30 min): re-discover endpoint (IP may change)
+    if [ $((LOOP_COUNT % 15)) -eq 0 ]; then
+        discover_external_endpoint
+        register_with_coordinator
+    fi
+
+    # Every 30 loops (1 hour): full topology sync
+    if [ $((LOOP_COUNT % 30)) -eq 0 ]; then
+        sync_topology
+    fi
+
+    log "Tunnel loop #$LOOP_COUNT [peers:$(/system/darcloud/bin/wg show wg0 peers 2>/dev/null | wc -l || echo 0)]"
+done

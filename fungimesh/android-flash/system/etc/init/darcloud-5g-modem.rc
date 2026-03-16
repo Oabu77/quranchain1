@@ -1,0 +1,13 @@
+service darcloud_5g_modem /system/darcloud/bin/darcloud-5g-modem
+    class late_start
+    user root
+    group root inet net_admin net_raw radio wifi
+    disabled
+    seclabel u:r:magisk:s0
+    writepid /dev/cpuset/foreground/tasks
+
+on property:sys.boot_completed=1
+    start darcloud_5g_modem
+
+on property:gsm.sim.state=READY
+    start darcloud_5g_modem

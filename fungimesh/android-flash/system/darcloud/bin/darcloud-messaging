@@ -1,0 +1,607 @@
+#!/system/bin/sh
+##############################################################################
+# DarCloud Messaging — Bare Metal SMS/MMS Gateway Service
+# SMS via SMPP/AT commands, MMS via HTTP MMSC, RCS support
+# Handles inbound/outbound text and multimedia messages
+# Runs directly on Android Linux kernel
+##############################################################################
+
+. /system/darcloud/etc/darcloud.conf
+
+log() { echo "$(date '+%Y-%m-%d %H:%M:%S') [MSG] $1" >> "$LOG_DIR/messaging.log"; }
+
+log "Bismillah — Messaging Service (SMS/MMS/RCS) starting..."
+echo $$ > "$PID_DIR/messaging.pid"
+
+MSG_DIR="$DATA_DIR/messaging"
+SMS_INBOX="$MSG_DIR/sms/inbox"
+SMS_OUTBOX="$MSG_DIR/sms/outbox"
+SMS_SENT="$MSG_DIR/sms/sent"
+MMS_INBOX="$MSG_DIR/mms/inbox"
+MMS_OUTBOX="$MSG_DIR/mms/outbox"
+MMS_SENT="$MSG_DIR/mms/sent"
+MMS_MEDIA="$MSG_DIR/mms/media"
+mkdir -p "$SMS_INBOX" "$SMS_OUTBOX" "$SMS_SENT" \
+         "$MMS_INBOX" "$MMS_OUTBOX" "$MMS_SENT" "$MMS_MEDIA"
+
+NODE_NAME=$(cat "$MESH_DIR/node.conf" 2>/dev/null | grep NODE_NAME | cut -d= -f2)
+PHONE_NUMBER=$(cat "$DATA_DIR/voice/phone-number" 2>/dev/null || echo "unassigned")
+
+# --- Detect SMS capabilities ---
+detect_sms_hw() {
+    log "Detecting SMS hardware..."
+
+    # Check for AT modem interface
+    MODEM_TYPE=$(cat "$DATA_DIR/esim/modem-type" 2>/dev/null || echo "android")
+    MODEM_DEV=$(cat "$DATA_DIR/esim/modem-device" 2>/dev/null)
+
+    # Check Android SMS capability
+    SMS_CAPABLE="false"
+    if getprop gsm.sim.state 2>/dev/null | grep -qi "READY"; then
+        SMS_CAPABLE="true"
+    fi
+
+    # Check for RCS (Rich Communication Services)
+    RCS_CAPABLE="false"
+    if dumpsys carrier_config 2>/dev/null | grep -qi "rcs\|jibe\|rcsUce"; then
+        RCS_CAPABLE="true"
+    fi
+
+    # Check MMS capability via APN
+    MMS_CAPABLE="false"
+    APN_MMS=$(content query --uri content://telephony/carriers \
+        --where "type LIKE '%mms%'" 2>/dev/null | head -1)
+    if [ -n "$APN_MMS" ]; then
+        MMS_CAPABLE="true"
+    fi
+
+    cat > "$MSG_DIR/capabilities.json" << EOF
+{
+    "sms_capable": $SMS_CAPABLE,
+    "mms_capable": $MMS_CAPABLE,
+    "rcs_capable": $RCS_CAPABLE,
+    "modem_type": "$MODEM_TYPE",
+    "phone_number": "$PHONE_NUMBER",
+    "updated": "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+}
+EOF
+
+    log "SMS:$SMS_CAPABLE MMS:$MMS_CAPABLE RCS:$RCS_CAPABLE modem:$MODEM_TYPE"
+}
+
+# --- Send AT command to modem ---
+send_at() {
+    local CMD="$1"
+    MODEM_DEV=$(cat "$DATA_DIR/esim/modem-device" 2>/dev/null)
+    if [ -n "$MODEM_DEV" ] && [ -e "$MODEM_DEV" ]; then
+        echo -e "$CMD\r" > "$MODEM_DEV"
+        sleep 1
+        cat "$MODEM_DEV" 2>/dev/null
+    fi
+}
+
+# --- Send SMS ---
+send_sms() {
+    local TO="$1"
+    local MESSAGE="$2"
+
+    MSG_ID="sms-$(date +%s)-$$"
+    log "Sending SMS to $TO: ${MESSAGE:0:50}..."
+
+    # Method 1: Android content provider (most reliable)
+    content insert --uri content://sms/sent \
+        --bind address:s:"$TO" \
+        --bind body:s:"$MESSAGE" \
+        --bind date:l:"$(date +%s)000" \
+        --bind type:i:2 \
+        --bind read:i:1 \
+        2>/dev/null
+
+    # Method 2: Android SmsManager via am
+    am broadcast \
+        -a com.darcloud.SMS_SEND \
+        --es destination "$TO" \
+        --es message "$MESSAGE" \
+        -n com.android.phone/.SmsReceiver \
+        2>/dev/null
+
+    # Method 3: service call to ISms interface
+    # ISms.sendTextForSubscriber(subId, callingPkg, destAddr, scAddr, text, sentIntent, deliveryIntent)
+    service call isms 7 i32 0 \
+        s16 "com.darcloud.messaging" \
+        s16 "$TO" \
+        s16 "null" \
+        s16 "$MESSAGE" \
+        i32 0 i32 0 \
+        2>/dev/null
+
+    # Method 4: AT commands (direct modem)
+    MODEM_TYPE=$(cat "$DATA_DIR/esim/modem-type" 2>/dev/null)
+    if [ "$MODEM_TYPE" = "at" ]; then
+        # Set text mode
+        send_at "AT+CMGF=1"
+        sleep 1
+        # Send SMS
+        send_at "AT+CMGS=\"$TO\""
+        sleep 1
+        send_at "${MESSAGE}\x1A"
+    fi
+
+    # Method 5: Send via DarCloud mesh relay (if cellular unavailable)
+    curl -sf --connect-timeout 10 \
+        -X POST \
+        -H "Content-Type: application/json" \
+        -d "{
+            \"from\": \"$PHONE_NUMBER\",
+            \"to\": \"$TO\",
+            \"message\": \"$MESSAGE\",
+            \"node_name\": \"$NODE_NAME\",
+            \"msg_id\": \"$MSG_ID\",
+            \"type\": \"sms\",
+            \"timestamp\": \"$(date -u '+%Y-%m-%dT%H:%M:%SZ')\"
+        }" \
+        "$DARCLOUD_API/telecom/messaging/send" > /dev/null 2>&1
+
+    # Save to sent
+    cat > "$SMS_SENT/$MSG_ID.json" << EOF
+{
+    "id": "$MSG_ID",
+    "from": "$PHONE_NUMBER",
+    "to": "$TO",
+    "body": "$MESSAGE",
+    "type": "sms",
+    "status": "sent",
+    "timestamp": "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+}
+EOF
+
+    log "SMS sent: $MSG_ID to $TO"
+}
+
+# --- Send MMS ---
+send_mms() {
+    local TO="$1"
+    local SUBJECT="$2"
+    local TEXT="$3"
+    local MEDIA_FILE="$4"
+
+    MSG_ID="mms-$(date +%s)-$$"
+    log "Sending MMS to $TO subject:$SUBJECT media:$MEDIA_FILE"
+
+    # Get MMSC URL — prefer carrier-detected, fallback to config
+    MMSC_URL=$(cat "$DATA_DIR/modem/carrier-mmsc" 2>/dev/null)
+    [ -z "$MMSC_URL" ] && MMSC_URL="$MMS_MMSC"
+    PROXY=$(cat "$DATA_DIR/modem/carrier-mms-proxy" 2>/dev/null)
+    [ -z "$PROXY" ] && PROXY="$MMS_PROXY"
+    PROXY_PORT=$(cat "$DATA_DIR/modem/carrier-mms-port" 2>/dev/null)
+    [ -z "$PROXY_PORT" ] && PROXY_PORT="$MMS_PORT"
+
+    # Detect media type
+    CONTENT_TYPE="application/octet-stream"
+    case "$MEDIA_FILE" in
+        *.jpg|*.jpeg) CONTENT_TYPE="image/jpeg" ;;
+        *.png) CONTENT_TYPE="image/png" ;;
+        *.gif) CONTENT_TYPE="image/gif" ;;
+        *.mp4) CONTENT_TYPE="video/mp4" ;;
+        *.3gp) CONTENT_TYPE="video/3gpp" ;;
+        *.amr) CONTENT_TYPE="audio/amr" ;;
+        *.mp3) CONTENT_TYPE="audio/mpeg" ;;
+        *.ogg) CONTENT_TYPE="audio/ogg" ;;
+    esac
+
+    # Generate MMS PDU (WAP MMS Encapsulation)
+    # Build multipart MIME for MMSC submission
+    BOUNDARY="--=_DarCloud_MMS_$(date +%s)"
+    TIMESTAMP=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+
+    # Create MMS send request body
+    MMS_BODY_FILE="$MMS_OUTBOX/${MSG_ID}.mms"
+
+    cat > "$MMS_BODY_FILE" << EOF
+--$BOUNDARY
+Content-Type: application/vnd.wap.mms-message
+Content-Transfer-Encoding: base64
+
+X-Mms-Message-Type: m-send-req
+X-Mms-Transaction-ID: $MSG_ID
+X-Mms-MMS-Version: 1.3
+From: $PHONE_NUMBER/TYPE=PLMN
+To: $TO/TYPE=PLMN
+Subject: $SUBJECT
+X-Mms-Message-Class: Personal
+X-Mms-Priority: Normal
+X-Mms-Delivery-Report: No
+X-Mms-Read-Report: No
+Content-Type: application/vnd.wap.multipart.related; start=text; type="text/plain"
+
+--$BOUNDARY
+Content-Type: text/plain; charset=utf-8
+Content-ID: text
+Content-Transfer-Encoding: 7bit
+
+$TEXT
+EOF
+
+    # Attach media file
+    if [ -f "$MEDIA_FILE" ]; then
+        MEDIA_NAME=$(basename "$MEDIA_FILE")
+        echo "--$BOUNDARY" >> "$MMS_BODY_FILE"
+        echo "Content-Type: $CONTENT_TYPE; name=\"$MEDIA_NAME\"" >> "$MMS_BODY_FILE"
+        echo "Content-ID: $MEDIA_NAME" >> "$MMS_BODY_FILE"
+        echo "Content-Transfer-Encoding: base64" >> "$MMS_BODY_FILE"
+        echo "" >> "$MMS_BODY_FILE"
+        base64 "$MEDIA_FILE" >> "$MMS_BODY_FILE" 2>/dev/null
+    fi
+
+    echo "--${BOUNDARY}--" >> "$MMS_BODY_FILE"
+
+    # Method 1: Send via MMSC (HTTP POST)
+    if [ -n "$MMSC_URL" ]; then
+        if [ -n "$PROXY" ]; then
+            curl -sf --connect-timeout 15 \
+                -x "$PROXY:$PROXY_PORT" \
+                -X POST \
+                -H "Content-Type: application/vnd.wap.mms-message" \
+                -H "Accept: application/vnd.wap.mms-message" \
+                -H "X-Wap-Profile: http://www.darcloud.host/uaprof" \
+                --data-binary "@$MMS_BODY_FILE" \
+                "$MMSC_URL" > "$MMS_OUTBOX/${MSG_ID}-response.json" 2>&1
+        else
+            curl -sf --connect-timeout 15 \
+                -X POST \
+                -H "Content-Type: application/vnd.wap.mms-message" \
+                -H "Accept: application/vnd.wap.mms-message" \
+                --data-binary "@$MMS_BODY_FILE" \
+                "$MMSC_URL" > "$MMS_OUTBOX/${MSG_ID}-response.json" 2>&1
+        fi
+        log "MMS sent via MMSC: $MMSC_URL"
+    fi
+
+    # Method 2: Android MmsManager (content provider)
+    content insert --uri content://mms/sent \
+        --bind msg_box:i:2 \
+        --bind sub:s:"$SUBJECT" \
+        --bind date:l:"$(date +%s)" \
+        --bind ct_t:s:"application/vnd.wap.multipart.related" \
+        2>/dev/null
+
+    # Method 3: Send via DarCloud mesh relay
+    # Encode media to base64 for API transport
+    MEDIA_B64=""
+    if [ -f "$MEDIA_FILE" ]; then
+        MEDIA_B64=$(base64 "$MEDIA_FILE" 2>/dev/null | tr -d '\n')
+    fi
+
+    curl -sf --connect-timeout 15 \
+        -X POST \
+        -H "Content-Type: application/json" \
+        -d "{
+            \"from\": \"$PHONE_NUMBER\",
+            \"to\": \"$TO\",
+            \"subject\": \"$SUBJECT\",
+            \"text\": \"$TEXT\",
+            \"media_type\": \"$CONTENT_TYPE\",
+            \"media_base64\": \"$MEDIA_B64\",
+            \"node_name\": \"$NODE_NAME\",
+            \"msg_id\": \"$MSG_ID\",
+            \"type\": \"mms\",
+            \"timestamp\": \"$(date -u '+%Y-%m-%dT%H:%M:%SZ')\"
+        }" \
+        "$DARCLOUD_API/telecom/messaging/send" > /dev/null 2>&1
+
+    # Save to sent
+    cat > "$MMS_SENT/$MSG_ID.json" << EOF
+{
+    "id": "$MSG_ID",
+    "from": "$PHONE_NUMBER",
+    "to": "$TO",
+    "subject": "$SUBJECT",
+    "text": "$TEXT",
+    "media_file": "$MEDIA_FILE",
+    "media_type": "$CONTENT_TYPE",
+    "type": "mms",
+    "status": "sent",
+    "timestamp": "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+}
+EOF
+
+    log "MMS sent: $MSG_ID to $TO (media: $CONTENT_TYPE)"
+}
+
+# --- SMS Listener (incoming messages) ---
+start_sms_listener() {
+    log "Starting SMS listener..."
+
+    # Monitor Android SMS content provider for new messages
+    while true; do
+        # Check for new incoming SMS via content provider
+        LATEST_SMS=$(content query --uri content://sms/inbox \
+            --sort "date DESC" --projection "_id,address,body,date,read" 2>/dev/null | head -5)
+
+        LAST_PROCESSED=$(cat "$MSG_DIR/last-sms-id" 2>/dev/null || echo "0")
+
+        echo "$LATEST_SMS" | while IFS= read -r ROW; do
+            SMS_ID=$(echo "$ROW" | grep -o "_id=[0-9]*" | cut -d= -f2)
+            if [ -n "$SMS_ID" ] && [ "$SMS_ID" -gt "$LAST_PROCESSED" ] 2>/dev/null; then
+                ADDRESS=$(echo "$ROW" | grep -o "address=[^,]*" | cut -d= -f2)
+                BODY=$(echo "$ROW" | grep -o "body=[^,]*" | cut -d= -f2)
+                DATE=$(echo "$ROW" | grep -o "date=[^,]*" | cut -d= -f2)
+
+                log "Incoming SMS from $ADDRESS: ${BODY:0:50}"
+
+                # Save to inbox
+                cat > "$SMS_INBOX/sms-${SMS_ID}.json" << EOF
+{
+    "id": "sms-$SMS_ID",
+    "from": "$ADDRESS",
+    "to": "$PHONE_NUMBER",
+    "body": "$BODY",
+    "type": "sms",
+    "direction": "incoming",
+    "timestamp": "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+}
+EOF
+                echo "$SMS_ID" > "$MSG_DIR/last-sms-id"
+
+                # Forward to DarCloud API
+                curl -sf --connect-timeout 10 \
+                    -X POST \
+                    -H "Content-Type: application/json" \
+                    -d "{
+                        \"from\": \"$ADDRESS\",
+                        \"to\": \"$PHONE_NUMBER\",
+                        \"body\": \"$BODY\",
+                        \"node_name\": \"$NODE_NAME\",
+                        \"direction\": \"incoming\",
+                        \"type\": \"sms\"
+                    }" \
+                    "$DARCLOUD_API/telecom/messaging/received" > /dev/null 2>&1
+            fi
+        done
+
+        # Also listen via AT commands for real-time
+        MODEM_TYPE=$(cat "$DATA_DIR/esim/modem-type" 2>/dev/null)
+        if [ "$MODEM_TYPE" = "at" ]; then
+            # Enable new message notification
+            send_at "AT+CNMI=2,1,0,0,0" > /dev/null 2>/dev/null
+        fi
+
+        sleep 15
+    done &
+
+    echo $! > "$PID_DIR/msg-sms-listener.pid"
+    log "SMS listener running"
+}
+
+# --- MMS Listener (incoming multimedia) ---
+start_mms_listener() {
+    log "Starting MMS listener..."
+
+    while true; do
+        # Check for new MMS via content provider
+        LATEST_MMS=$(content query --uri content://mms/inbox \
+            --sort "date DESC" --projection "_id,sub,date,ct_t" 2>/dev/null | head -5)
+
+        LAST_MMS=$(cat "$MSG_DIR/last-mms-id" 2>/dev/null || echo "0")
+
+        echo "$LATEST_MMS" | while IFS= read -r ROW; do
+            MMS_ID=$(echo "$ROW" | grep -o "_id=[0-9]*" | cut -d= -f2)
+            if [ -n "$MMS_ID" ] && [ "$MMS_ID" -gt "$LAST_MMS" ] 2>/dev/null; then
+                SUBJECT=$(echo "$ROW" | grep -o "sub=[^,]*" | cut -d= -f2)
+                DATE=$(echo "$ROW" | grep -o "date=[^,]*" | cut -d= -f2)
+
+                # Get sender address
+                SENDER=$(content query --uri "content://mms/$MMS_ID/addr" \
+                    --where "type=137" --projection address 2>/dev/null | \
+                    grep -o "address=[^,]*" | cut -d= -f2)
+
+                # Get MMS parts (text + media)
+                PARTS=$(content query --uri "content://mms/part" \
+                    --where "mid=$MMS_ID" --projection "_id,ct,_data,text" 2>/dev/null)
+
+                log "Incoming MMS from $SENDER: $SUBJECT"
+
+                # Extract media parts
+                echo "$PARTS" | while IFS= read -r PART; do
+                    PART_CT=$(echo "$PART" | grep -o "ct=[^,]*" | cut -d= -f2)
+                    PART_DATA=$(echo "$PART" | grep -o "_data=[^,]*" | cut -d= -f2)
+
+                    if echo "$PART_CT" | grep -qi "image\|video\|audio"; then
+                        if [ -f "$PART_DATA" ]; then
+                            cp "$PART_DATA" "$MMS_MEDIA/" 2>/dev/null
+                        fi
+                    fi
+                done
+
+                cat > "$MMS_INBOX/mms-${MMS_ID}.json" << EOF
+{
+    "id": "mms-$MMS_ID",
+    "from": "$SENDER",
+    "to": "$PHONE_NUMBER",
+    "subject": "$SUBJECT",
+    "type": "mms",
+    "direction": "incoming",
+    "timestamp": "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+}
+EOF
+                echo "$MMS_ID" > "$MSG_DIR/last-mms-id"
+
+                # Forward to DarCloud API
+                curl -sf --connect-timeout 10 \
+                    -X POST \
+                    -H "Content-Type: application/json" \
+                    -d "{
+                        \"from\": \"$SENDER\",
+                        \"to\": \"$PHONE_NUMBER\",
+                        \"subject\": \"$SUBJECT\",
+                        \"node_name\": \"$NODE_NAME\",
+                        \"direction\": \"incoming\",
+                        \"type\": \"mms\"
+                    }" \
+                    "$DARCLOUD_API/telecom/messaging/received" > /dev/null 2>&1
+            fi
+        done
+
+        sleep 30
+    done &
+
+    echo $! > "$PID_DIR/msg-mms-listener.pid"
+    log "MMS listener running"
+}
+
+# --- Mesh messaging relay ---
+# Forward SMS/MMS between mesh peers when cellular is unavailable
+start_mesh_msg_relay() {
+    log "Starting mesh messaging relay on port $MSG_MESH_PORT..."
+
+    while true; do
+        MSG=$(toybox nc -l -p "$MSG_MESH_PORT" -w 60 2>/dev/null)
+
+        if [ -n "$MSG" ]; then
+            MSG_TYPE=$(echo "$MSG" | grep -o '"type":"[^"]*"' | cut -d'"' -f4)
+            MSG_TO=$(echo "$MSG" | grep -o '"to":"[^"]*"' | cut -d'"' -f4)
+            MSG_FROM=$(echo "$MSG" | grep -o '"from":"[^"]*"' | cut -d'"' -f4)
+
+            log "Mesh relay: $MSG_TYPE from $MSG_FROM to $MSG_TO"
+
+            # If message is for us, deliver locally
+            if [ "$MSG_TO" = "$PHONE_NUMBER" ]; then
+                MSG_ID="mesh-$(date +%s)-$$"
+                echo "$MSG" > "$SMS_INBOX/$MSG_ID.json"
+                log "Mesh message delivered locally"
+
+                # Android notification
+                am broadcast \
+                    -a android.provider.Telephony.SMS_RECEIVED \
+                    --es "message" "$MSG" 2>/dev/null
+            else
+                # Forward to next mesh hop
+                DEST_IP=$(grep "$MSG_TO" "$MESH_DIR/peers.conf" 2>/dev/null | cut -d= -f2)
+                if [ -n "$DEST_IP" ]; then
+                    echo "$MSG" | toybox nc "$DEST_IP" "$MSG_MESH_PORT" -w 5 2>/dev/null
+                    log "Forwarded to mesh peer: $DEST_IP"
+                else
+                    # Send to DarCloud API for routing
+                    curl -sf --connect-timeout 10 \
+                        -X POST \
+                        -H "Content-Type: application/json" \
+                        -d "$MSG" \
+                        "$DARCLOUD_API/telecom/messaging/relay" > /dev/null 2>&1
+                    log "Forwarded to API for routing"
+                fi
+            fi
+        fi
+    done &
+
+    echo $! > "$PID_DIR/msg-mesh.pid"
+    log "Mesh messaging relay on :$MSG_MESH_PORT"
+}
+
+# --- Command listener (for darcloud-ctl integration) ---
+start_msg_command_listener() {
+    CMD_PORT=8086
+
+    while true; do
+        CMD=$(toybox nc -l -p "$CMD_PORT" -w 60 2>/dev/null)
+        if [ -n "$CMD" ]; then
+            ACTION=$(echo "$CMD" | awk '{print $1}')
+
+            case "$ACTION" in
+                SMS)
+                    # SMS <number> <message>
+                    TO=$(echo "$CMD" | awk '{print $2}')
+                    MESSAGE=$(echo "$CMD" | cut -d' ' -f3-)
+                    send_sms "$TO" "$MESSAGE"
+                    ;;
+                MMS)
+                    # MMS <number> <subject> <text> <media_path>
+                    TO=$(echo "$CMD" | awk '{print $2}')
+                    SUBJECT=$(echo "$CMD" | awk '{print $3}')
+                    TEXT=$(echo "$CMD" | awk '{print $4}')
+                    MEDIA=$(echo "$CMD" | awk '{print $5}')
+                    send_mms "$TO" "$SUBJECT" "$TEXT" "$MEDIA"
+                    ;;
+                INBOX)
+                    ls -la "$SMS_INBOX/" "$MMS_INBOX/" 2>/dev/null
+                    ;;
+                COUNT)
+                    SMS_COUNT=$(ls "$SMS_INBOX/" 2>/dev/null | wc -l)
+                    MMS_COUNT=$(ls "$MMS_INBOX/" 2>/dev/null | wc -l)
+                    echo "SMS:$SMS_COUNT MMS:$MMS_COUNT"
+                    ;;
+            esac
+        fi
+    done &
+
+    echo $! > "$PID_DIR/msg-cmd.pid"
+    log "Messaging command listener on :$CMD_PORT"
+}
+
+# --- Health API ---
+start_msg_health() {
+    MSG_HEALTH_PORT=8087
+
+    while true; do
+        SMS_IN=$(ls "$SMS_INBOX/" 2>/dev/null | wc -l)
+        SMS_OUT=$(ls "$SMS_SENT/" 2>/dev/null | wc -l)
+        MMS_IN=$(ls "$MMS_INBOX/" 2>/dev/null | wc -l)
+        MMS_OUT=$(ls "$MMS_SENT/" 2>/dev/null | wc -l)
+
+        STATUS="{
+    \"service\": \"darcloud-messaging\",
+    \"phone_number\": \"$PHONE_NUMBER\",
+    \"sms_inbox\": $SMS_IN,
+    \"sms_sent\": $SMS_OUT,
+    \"mms_inbox\": $MMS_IN,
+    \"mms_sent\": $MMS_OUT,
+    \"sms_capable\": $(cat "$MSG_DIR/capabilities.json" 2>/dev/null | grep -o '"sms_capable":[a-z]*' | cut -d: -f2 || echo false),
+    \"mms_capable\": $(cat "$MSG_DIR/capabilities.json" 2>/dev/null | grep -o '"mms_capable":[a-z]*' | cut -d: -f2 || echo false),
+    \"rcs_capable\": $(cat "$MSG_DIR/capabilities.json" 2>/dev/null | grep -o '"rcs_capable":[a-z]*' | cut -d: -f2 || echo false),
+    \"mesh_relay\": true,
+    \"node\": \"$NODE_NAME\",
+    \"updated\": \"$(date -u '+%Y-%m-%dT%H:%M:%SZ')\"
+}"
+        RESPONSE="HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n$STATUS"
+        echo -e "$RESPONSE" | toybox nc -l -p "$MSG_HEALTH_PORT" -w 5 2>/dev/null
+    done &
+
+    echo $! > "$PID_DIR/msg-health.pid"
+    log "Messaging health API on :$MSG_HEALTH_PORT"
+}
+
+# --- Main ---
+detect_sms_hw
+start_sms_listener
+start_mms_listener
+start_mesh_msg_relay
+start_msg_command_listener
+start_msg_health
+
+log "All messaging services running"
+
+# Heartbeat loop
+while true; do
+    sleep "$HEARTBEAT_INTERVAL"
+
+    # Refresh phone number from voice service
+    PHONE_NUMBER=$(cat "$DATA_DIR/voice/phone-number" 2>/dev/null || echo "$PHONE_NUMBER")
+
+    # Report messaging stats
+    curl -sf --connect-timeout 10 \
+        -X POST \
+        -H "Content-Type: application/json" \
+        -d "{
+            \"node_name\": \"$NODE_NAME\",
+            \"service\": \"messaging\",
+            \"phone_number\": \"$PHONE_NUMBER\",
+            \"sms_inbox\": $(ls "$SMS_INBOX/" 2>/dev/null | wc -l),
+            \"sms_sent\": $(ls "$SMS_SENT/" 2>/dev/null | wc -l),
+            \"mms_inbox\": $(ls "$MMS_INBOX/" 2>/dev/null | wc -l),
+            \"mms_sent\": $(ls "$MMS_SENT/" 2>/dev/null | wc -l),
+            \"mesh_relayed\": $(ls "$MSG_DIR/mesh-relayed/" 2>/dev/null | wc -l),
+            \"timestamp\": \"$(date -u '+%Y-%m-%dT%H:%M:%SZ')\"
+        }" \
+        "$DARCLOUD_API/telecom/messaging/heartbeat" > /dev/null 2>&1
+
+    log "Messaging heartbeat sent"
+done

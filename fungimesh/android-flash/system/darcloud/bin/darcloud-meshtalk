@@ -1,0 +1,152 @@
+#!/system/bin/sh
+##############################################################################
+# DarCloud MeshTalk — Bare Metal P2P Communications
+# Voice relay, text messaging, mesh radio over UDP/TCP
+# Runs directly on Android Linux kernel
+##############################################################################
+
+. /system/darcloud/etc/darcloud.conf
+
+log() { echo "$(date '+%Y-%m-%d %H:%M:%S') [MESHTALK] $1" >> "$LOG_DIR/meshtalk.log"; }
+
+log "Bismillah — MeshTalk P2P Communications starting..."
+echo $$ > "$PID_DIR/meshtalk.pid"
+
+MESHTALK_DIR="$DATA_DIR/meshtalk"
+mkdir -p "$MESHTALK_DIR/messages" "$MESHTALK_DIR/voice-queue"
+
+# Load node identity
+NODE_NAME=$(cat "$MESH_DIR/node.conf" 2>/dev/null | grep NODE_NAME | cut -d= -f2)
+MESH_IP=$(cat "$MESH_DIR/mesh-ip" 2>/dev/null || echo "10.77.0.1")
+
+# --- Text Message Relay ---
+# Listens on UDP for mesh text messages, stores and forwards
+start_text_relay() {
+    log "Starting text message relay on UDP:$MESHTALK_TEXT_PORT..."
+
+    while true; do
+        # Listen for incoming text messages
+        MSG=$(toybox nc -lu -p "$MESHTALK_TEXT_PORT" -w 30 2>/dev/null)
+
+        if [ -n "$MSG" ]; then
+            TIMESTAMP=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+            MSG_ID=$(echo "$TIMESTAMP$MSG" | md5sum | cut -d' ' -f1)
+
+            # Store message
+            echo "{\"id\":\"$MSG_ID\",\"msg\":\"$MSG\",\"received\":\"$TIMESTAMP\",\"relay\":\"$NODE_NAME\"}" \
+                >> "$MESHTALK_DIR/messages/inbox.jsonl"
+
+            log "Message received: $MSG_ID"
+
+            # Forward to mesh peers (store-and-forward)
+            if [ -f "$WG_DIR/peers.json" ]; then
+                cat "$WG_DIR/peers.json" | grep -o '"mesh_ip":"[^"]*"' | cut -d'"' -f4 | while read PEER_IP; do
+                    echo "$MSG" | toybox nc -u "$PEER_IP" "$MESHTALK_TEXT_PORT" -w 2 2>/dev/null &
+                done
+                log "Message $MSG_ID forwarded to mesh peers"
+            fi
+        fi
+    done &
+
+    TEXT_PID=$!
+    echo "$TEXT_PID" > "$PID_DIR/meshtalk-text.pid"
+    log "Text relay running (PID: $TEXT_PID)"
+}
+
+# --- Voice Relay ---
+# UDP voice packet forwarding between mesh nodes
+start_voice_relay() {
+    log "Starting voice relay on UDP:$MESHTALK_VOICE_PORT..."
+
+    while true; do
+        # Relay voice packets between mesh peers
+        # Uses simple UDP forwarding — each packet is forwarded to all peers
+        toybox nc -lu -p "$MESHTALK_VOICE_PORT" -w 60 2>/dev/null | while read -r PACKET; do
+            if [ -f "$WG_DIR/peers.json" ]; then
+                cat "$WG_DIR/peers.json" | grep -o '"mesh_ip":"[^"]*"' | cut -d'"' -f4 | while read PEER_IP; do
+                    echo "$PACKET" | toybox nc -u "$PEER_IP" "$MESHTALK_VOICE_PORT" -w 1 2>/dev/null &
+                done
+            fi
+        done
+        sleep 1
+    done &
+
+    VOICE_PID=$!
+    echo "$VOICE_PID" > "$PID_DIR/meshtalk-voice.pid"
+    log "Voice relay running (PID: $VOICE_PID)"
+}
+
+# --- Mesh Radio (BLE/WiFi Direct P2P) ---
+start_mesh_radio() {
+    log "Starting mesh radio (local P2P discovery)..."
+
+    # WiFi Direct for phone-to-phone mesh
+    if command -v wpa_cli > /dev/null 2>&1; then
+        # Enable WiFi P2P
+        wpa_cli -ip2p0 p2p_find 2>/dev/null &
+        log "WiFi Direct P2P discovery enabled"
+    fi
+
+    # Monitor for nearby MeshTalk nodes via multicast
+    while true; do
+        # Broadcast presence on local network
+        ANNOUNCE="{\"node\":\"$NODE_NAME\",\"ip\":\"$MESH_IP\",\"services\":[\"text\",\"voice\",\"relay\"],\"time\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}"
+
+        # Send to multicast group (local subnet discovery)
+        echo "$ANNOUNCE" | toybox nc -u 224.0.0.77 "$MESHTALK_UDP_PORT" -w 2 2>/dev/null
+
+        # Listen for other nodes
+        PEER_ANNOUNCE=$(timeout 10 toybox nc -lu -p "$MESHTALK_UDP_PORT" -w 10 2>/dev/null)
+        if [ -n "$PEER_ANNOUNCE" ]; then
+            echo "$PEER_ANNOUNCE" >> "$MESHTALK_DIR/discovered-peers.jsonl"
+            log "Discovered MeshTalk peer: $PEER_ANNOUNCE"
+        fi
+
+        sleep 30
+    done &
+
+    RADIO_PID=$!
+    echo "$RADIO_PID" > "$PID_DIR/meshtalk-radio.pid"
+    log "Mesh radio running (PID: $RADIO_PID)"
+}
+
+# --- MeshTalk Status API ---
+start_status_api() {
+    log "Starting MeshTalk status endpoint..."
+
+    while true; do
+        MSG_COUNT=$(wc -l < "$MESHTALK_DIR/messages/inbox.jsonl" 2>/dev/null || echo "0")
+        PEER_COUNT=$(wc -l < "$MESHTALK_DIR/discovered-peers.jsonl" 2>/dev/null || echo "0")
+        TEXT_UP=$(kill -0 $(cat "$PID_DIR/meshtalk-text.pid" 2>/dev/null) 2>/dev/null && echo "true" || echo "false")
+        VOICE_UP=$(kill -0 $(cat "$PID_DIR/meshtalk-voice.pid" 2>/dev/null) 2>/dev/null && echo "true" || echo "false")
+
+        RESPONSE="{\"service\":\"meshtalk\",\"node\":\"$NODE_NAME\",\"messages\":$MSG_COUNT,\"peers\":$PEER_COUNT,\"text_relay\":$TEXT_UP,\"voice_relay\":$VOICE_UP}"
+        echo -e "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: ${#RESPONSE}\r\n\r\n$RESPONSE" | \
+            toybox nc -l -p 8081 -w 5 2>/dev/null
+    done &
+
+    echo $! > "$PID_DIR/meshtalk-api.pid"
+}
+
+# --- Main ---
+start_text_relay
+start_voice_relay
+start_mesh_radio
+start_status_api
+
+log "All MeshTalk services running"
+
+# Keep alive + cleanup old messages
+while true; do
+    # Prune messages older than 7 days
+    CUTOFF=$(date -d "7 days ago" '+%Y-%m-%d' 2>/dev/null)
+    if [ -n "$CUTOFF" ] && [ -f "$MESHTALK_DIR/messages/inbox.jsonl" ]; then
+        LINES=$(wc -l < "$MESHTALK_DIR/messages/inbox.jsonl")
+        if [ "$LINES" -gt 10000 ]; then
+            tail -5000 "$MESHTALK_DIR/messages/inbox.jsonl" > "$MESHTALK_DIR/messages/inbox.tmp"
+            mv "$MESHTALK_DIR/messages/inbox.tmp" "$MESHTALK_DIR/messages/inbox.jsonl"
+            log "Pruned message inbox to 5000 entries"
+        fi
+    fi
+    sleep 3600
+done

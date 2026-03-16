@@ -1,0 +1,250 @@
+#!/system/bin/sh
+##############################################################################
+# DarCloud Discovery Node — Bare Metal Network Scanner
+# ARP scanning, neighbor discovery, subnet mapping, device detection
+# Runs directly on Android Linux kernel
+##############################################################################
+
+. /system/darcloud/etc/darcloud.conf
+
+log() { echo "$(date '+%Y-%m-%d %H:%M:%S') [DISCOVERY] $1" >> "$LOG_DIR/discovery.log"; }
+
+log "Bismillah — Discovery Node starting on bare metal..."
+echo $$ > "$PID_DIR/discovery.pid"
+
+DISCOVERY_DIR="$DATA_DIR/discovery"
+mkdir -p "$DISCOVERY_DIR"
+
+# --- Network interface detection ---
+detect_interfaces() {
+    log "Detecting network interfaces..."
+
+    IFACES=""
+    for iface in /sys/class/net/*; do
+        name=$(basename "$iface")
+        case "$name" in
+            lo|dummy*|wg*|bat*|mesh*) continue ;;
+        esac
+        state=$(cat "$iface/operstate" 2>/dev/null)
+        mac=$(cat "$iface/address" 2>/dev/null)
+        if [ "$state" = "up" ] || [ "$state" = "unknown" ]; then
+            IFACES="$IFACES $name"
+            log "  Active: $name (MAC: $mac, state: $state)"
+        fi
+    done
+
+    echo "$IFACES" > "$DISCOVERY_DIR/active-interfaces"
+}
+
+# --- ARP table scan ---
+scan_arp() {
+    log "Scanning ARP table..."
+
+    ARP_FILE="$DISCOVERY_DIR/arp-neighbors.json"
+    echo '{"neighbors":[' > "$ARP_FILE"
+
+    FIRST=true
+    ip neigh show 2>/dev/null | while read line; do
+        IP=$(echo "$line" | awk '{print $1}')
+        DEV=$(echo "$line" | awk '{print $3}')
+        MAC=$(echo "$line" | grep -o '[0-9a-f]\{2\}:[0-9a-f]\{2\}:[0-9a-f]\{2\}:[0-9a-f]\{2\}:[0-9a-f]\{2\}:[0-9a-f]\{2\}')
+        STATE=$(echo "$line" | awk '{print $NF}')
+
+        if [ -n "$MAC" ]; then
+            if [ "$FIRST" = true ]; then
+                FIRST=false
+            else
+                echo "," >> "$ARP_FILE"
+            fi
+            echo "{\"ip\":\"$IP\",\"mac\":\"$MAC\",\"dev\":\"$DEV\",\"state\":\"$STATE\"}" >> "$ARP_FILE"
+        fi
+    done
+
+    echo '],"scanned_at":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"}' >> "$ARP_FILE"
+    log "ARP scan complete"
+}
+
+# --- Ping sweep subnet ---
+ping_sweep() {
+    SUBNET=$1
+    log "Ping sweep: $SUBNET..."
+
+    # Extract base (e.g., 192.168.1)
+    BASE=$(echo "$SUBNET" | sed 's/\.[0-9]*$//')
+
+    LIVE_FILE="$DISCOVERY_DIR/live-hosts-$(echo $BASE | tr '.' '-').txt"
+    > "$LIVE_FILE"
+
+    # Parallel ping sweep (background jobs)
+    for i in $(seq 1 254); do
+        ping -c 1 -W 1 "$BASE.$i" > /dev/null 2>&1 && echo "$BASE.$i" >> "$LIVE_FILE" &
+        # Limit concurrent pings to avoid overwhelming the device
+        [ $((i % 50)) -eq 0 ] && wait
+    done
+    wait
+
+    COUNT=$(wc -l < "$LIVE_FILE" 2>/dev/null || echo "0")
+    log "Ping sweep complete: $COUNT live hosts on $BASE.0/24"
+}
+
+# --- WiFi scan (nearby access points) ---
+scan_wifi() {
+    log "Scanning WiFi networks..."
+
+    WIFI_FILE="$DISCOVERY_DIR/wifi-networks.json"
+
+    # Use Android's wpa_supplicant scan
+    wpa_cli -iwlan0 scan > /dev/null 2>&1
+    sleep 3
+
+    SCAN_RESULTS=$(wpa_cli -iwlan0 scan_results 2>/dev/null)
+
+    if [ -n "$SCAN_RESULTS" ]; then
+        echo '{"networks":[' > "$WIFI_FILE"
+        FIRST=true
+        echo "$SCAN_RESULTS" | tail -n +2 | while IFS='	' read bssid freq signal flags ssid; do
+            if [ -n "$bssid" ] && [ "$bssid" != "bssid" ]; then
+                if [ "$FIRST" = true ]; then
+                    FIRST=false
+                else
+                    echo "," >> "$WIFI_FILE"
+                fi
+                echo "{\"bssid\":\"$bssid\",\"freq\":\"$freq\",\"signal\":\"$signal\",\"ssid\":\"$ssid\"}" >> "$WIFI_FILE"
+            fi
+        done
+        echo '],"scanned_at":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"}' >> "$WIFI_FILE"
+        log "WiFi scan complete"
+    else
+        log "WiFi scan: wpa_cli not available — using iw"
+        iw dev wlan0 scan 2>/dev/null | grep -E "BSS|SSID|signal" > "$WIFI_FILE.raw"
+    fi
+}
+
+# --- Bluetooth scan ---
+scan_bluetooth() {
+    log "Scanning Bluetooth devices..."
+
+    BT_FILE="$DISCOVERY_DIR/bluetooth-devices.json"
+
+    # Use Android's HCI interface
+    if [ -e /dev/hci0 ] || hciconfig hci0 up 2>/dev/null; then
+        hcitool scan --length=5 2>/dev/null | tail -n +2 > "$BT_FILE.raw"
+        log "Bluetooth scan complete"
+    else
+        log "Bluetooth: HCI interface not directly accessible — Android manages BT"
+        echo '{"bluetooth":"managed_by_android","note":"Use Settings > Bluetooth"}' > "$BT_FILE"
+    fi
+}
+
+# --- Cell tower info ---
+scan_cell_towers() {
+    log "Reading cell tower info..."
+
+    CELL_FILE="$DISCOVERY_DIR/cell-towers.json"
+
+    # Get telephony info from Android
+    OPERATOR=$(getprop gsm.operator.alpha 2>/dev/null || echo "unknown")
+    OPERATOR_NUM=$(getprop gsm.sim.operator.numeric 2>/dev/null || echo "unknown")
+    NETWORK_TYPE=$(getprop gsm.network.type 2>/dev/null || echo "unknown")
+    SIGNAL=$(dumpsys telephony.registry 2>/dev/null | grep -i "mSignalStrength" | head -1 || echo "unknown")
+    CELL_ID=$(dumpsys telephony.registry 2>/dev/null | grep -i "mCellIdentity" | head -1 || echo "unknown")
+
+    cat > "$CELL_FILE" << EOF
+{
+    "operator": "$OPERATOR",
+    "operator_numeric": "$OPERATOR_NUM",
+    "network_type": "$NETWORK_TYPE",
+    "signal": "$SIGNAL",
+    "cell_identity": "$CELL_ID",
+    "scanned_at": "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+}
+EOF
+    log "Cell tower info: $OPERATOR ($NETWORK_TYPE)"
+}
+
+# --- Report discovery to API ---
+report_discovery() {
+    ARP_COUNT=$(cat "$DISCOVERY_DIR/arp-neighbors.json" 2>/dev/null | grep -c '"ip"' || echo "0")
+    WIFI_COUNT=$(cat "$DISCOVERY_DIR/wifi-networks.json" 2>/dev/null | grep -c '"ssid"' || echo "0")
+
+    REPORT=$(cat << EOF
+{
+    "node_name": "$(cat $MESH_DIR/node.conf 2>/dev/null | grep NODE_NAME | cut -d= -f2)",
+    "arp_neighbors": $ARP_COUNT,
+    "wifi_networks": $WIFI_COUNT,
+    "active_interfaces": "$(cat $DISCOVERY_DIR/active-interfaces 2>/dev/null | xargs)",
+    "scanned_at": "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+}
+EOF
+)
+
+    curl -sf --connect-timeout 10 \
+        -X POST \
+        -H "Content-Type: application/json" \
+        -d "$REPORT" \
+        "$DARCLOUD_API/mesh/discovery" > /dev/null 2>&1
+}
+
+# --- Health API (lightweight HTTP on port 8080) ---
+start_health_api() {
+    log "Starting health API on port $HEALTH_PORT..."
+
+    # Simple HTTP server using shell + netcat
+    while true; do
+        UPTIME=$(cat /proc/uptime | awk '{print $1}')
+        BATTERY=$(cat /sys/class/power_supply/battery/capacity 2>/dev/null || echo "?")
+        MEM_FREE=$(free -m 2>/dev/null | grep Mem | awk '{print $4}' || echo "?")
+
+        RESPONSE='{"status":"online","node_type":"mobile-supernode","uptime":'$UPTIME',"battery":"'$BATTERY'%","mem_free_mb":"'$MEM_FREE'","services":["meshnode","discovery","gateway","meshtalk","telecom"]}'
+        HEADERS="HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: ${#RESPONSE}\r\nConnection: close\r\n\r\n"
+
+        echo -e "$HEADERS$RESPONSE" | toybox nc -l -p "$HEALTH_PORT" -w 5 2>/dev/null
+    done &
+
+    HEALTH_PID=$!
+    echo "$HEALTH_PID" > "$PID_DIR/health-api.pid"
+    log "Health API running (PID: $HEALTH_PID)"
+}
+
+# --- Main loop ---
+detect_interfaces
+start_health_api
+
+SCAN_COUNT=0
+while true; do
+    SCAN_COUNT=$((SCAN_COUNT + 1))
+    log "--- Discovery scan #$SCAN_COUNT ---"
+
+    # Core scans every cycle
+    detect_interfaces
+    scan_arp
+
+    # Determine local subnets from active interfaces
+    for iface in $(cat "$DISCOVERY_DIR/active-interfaces" 2>/dev/null); do
+        SUBNET=$(ip addr show "$iface" 2>/dev/null | grep "inet " | awk '{print $2}' | head -1 | sed 's|/.*||')
+        if [ -n "$SUBNET" ]; then
+            ping_sweep "$SUBNET"
+        fi
+    done
+
+    # WiFi scan every other cycle
+    if [ $((SCAN_COUNT % 2)) -eq 0 ]; then
+        scan_wifi
+    fi
+
+    # Cell tower info every 5 cycles
+    if [ $((SCAN_COUNT % 5)) -eq 0 ]; then
+        scan_cell_towers
+    fi
+
+    # Bluetooth every 10 cycles
+    if [ $((SCAN_COUNT % 10)) -eq 0 ]; then
+        scan_bluetooth
+    fi
+
+    # Report to API
+    report_discovery
+
+    # Sleep 5 minutes between scans
+    sleep 300
+done

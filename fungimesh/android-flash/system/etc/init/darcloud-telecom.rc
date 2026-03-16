@@ -1,0 +1,14 @@
+# DarCloud Telecom — Android init service
+# Cell tower relay, UDP/TCP/DNS binding on bare hardware
+
+service darcloud_telecom /system/darcloud/bin/darcloud-telecom
+    class late_start
+    user root
+    group root inet net_admin net_raw
+    disabled
+    oneshot
+    seclabel u:r:shell:s0
+    writepid /dev/cpuset/system-background/tasks
+
+on property:darcloud.telecom.start=1
+    start darcloud_telecom

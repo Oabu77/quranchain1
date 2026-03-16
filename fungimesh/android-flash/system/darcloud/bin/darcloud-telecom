@@ -1,0 +1,266 @@
+#!/system/bin/sh
+##############################################################################
+# DarCloud Telecom — Bare Metal Cell Tower Relay Service
+# UDP/TCP/DNS binding, traffic relay, ISP integration
+# Runs directly on Android Linux kernel
+##############################################################################
+
+. /system/darcloud/etc/darcloud.conf
+
+log() { echo "$(date '+%Y-%m-%d %H:%M:%S') [TELECOM] $1" >> "$LOG_DIR/telecom.log"; }
+
+log "Bismillah — Telecom Cell Tower Relay starting..."
+echo $$ > "$PID_DIR/telecom.pid"
+
+TELECOM_DIR="$DATA_DIR/telecom"
+mkdir -p "$TELECOM_DIR"
+
+NODE_NAME=$(cat "$MESH_DIR/node.conf" 2>/dev/null | grep NODE_NAME | cut -d= -f2)
+
+# --- Cell tower info gathering ---
+gather_cell_info() {
+    log "Gathering cellular network info..."
+
+    OPERATOR=$(getprop gsm.operator.alpha 2>/dev/null)
+    MCC_MNC=$(getprop gsm.sim.operator.numeric 2>/dev/null)
+    NETWORK=$(getprop gsm.network.type 2>/dev/null)
+    DATA_STATE=$(getprop gsm.nitz.time 2>/dev/null)
+    PHONE_TYPE=$(getprop telephony.lteOnCdmaDevice 2>/dev/null)
+    SIM_STATE=$(getprop gsm.sim.state 2>/dev/null)
+
+    # Signal strength from dumpsys
+    SIGNAL_DBM=$(dumpsys telephony.registry 2>/dev/null | \
+        grep -o "mSignalStrength=[0-9-]*" | head -1 | cut -d= -f2)
+
+    # Cell identity (tower ID)
+    CELL_ID=$(dumpsys telephony.registry 2>/dev/null | \
+        grep -o "mCi=[0-9]*" | head -1 | cut -d= -f2)
+    LAC=$(dumpsys telephony.registry 2>/dev/null | \
+        grep -o "mLac=[0-9]*" | head -1 | cut -d= -f2)
+
+    cat > "$TELECOM_DIR/cell-info.json" << EOF
+{
+    "operator": "$OPERATOR",
+    "mcc_mnc": "$MCC_MNC",
+    "network_type": "$NETWORK",
+    "sim_state": "$SIM_STATE",
+    "signal_dbm": "$SIGNAL_DBM",
+    "cell_id": "$CELL_ID",
+    "lac": "$LAC",
+    "phone_type": "$PHONE_TYPE",
+    "updated": "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+}
+EOF
+
+    log "Cell info: $OPERATOR ($NETWORK) signal:${SIGNAL_DBM}dBm cell:$CELL_ID"
+}
+
+# --- DNS relay service ---
+start_dns_relay() {
+    DNS_PORT=$TELECOM_DNS_BASE
+    log "Starting DNS relay on port $DNS_PORT..."
+
+    # Simple DNS forwarder using socat or netcat
+    while true; do
+        # Listen for DNS queries and forward to upstream
+        toybox nc -lu -p "$DNS_PORT" -w 30 2>/dev/null | while read -r QUERY; do
+            # Forward to Cloudflare DNS
+            echo "$QUERY" | toybox nc -u 1.1.1.1 53 -w 5 2>/dev/null
+        done
+        sleep 1
+    done &
+
+    DNS_PID=$!
+    echo "$DNS_PID" > "$PID_DIR/telecom-dns.pid"
+    log "DNS relay running on :$DNS_PORT (PID: $DNS_PID)"
+}
+
+# --- TCP relay service ---
+start_tcp_relay() {
+    TCP_PORT=$TELECOM_TCP_BASE
+    log "Starting TCP relay on port $TCP_PORT..."
+
+    while true; do
+        toybox nc -l -p "$TCP_PORT" -w 60 2>/dev/null | while read -r DATA; do
+            # Log traffic stats
+            BYTES=$(echo "$DATA" | wc -c)
+            echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) tcp $BYTES bytes" >> "$TELECOM_DIR/traffic.log"
+
+            # Forward to mesh peers if this is a relay request
+            if echo "$DATA" | grep -q "RELAY:"; then
+                DEST=$(echo "$DATA" | sed 's/RELAY:\([^:]*\):.*/\1/')
+                PAYLOAD=$(echo "$DATA" | sed 's/RELAY:[^:]*://')
+                echo "$PAYLOAD" | toybox nc "$DEST" "$TCP_PORT" -w 5 2>/dev/null
+            fi
+        done
+        sleep 1
+    done &
+
+    TCP_PID=$!
+    echo "$TCP_PID" > "$PID_DIR/telecom-tcp.pid"
+    log "TCP relay running on :$TCP_PORT (PID: $TCP_PID)"
+}
+
+# --- UDP relay service ---
+start_udp_relay() {
+    UDP_PORT=$TELECOM_UDP_BASE
+    log "Starting UDP relay on port $UDP_PORT..."
+
+    while true; do
+        toybox nc -lu -p "$UDP_PORT" -w 60 2>/dev/null | while read -r DATA; do
+            BYTES=$(echo "$DATA" | wc -c)
+            echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) udp $BYTES bytes" >> "$TELECOM_DIR/traffic.log"
+        done
+        sleep 1
+    done &
+
+    UDP_PID=$!
+    echo "$UDP_PID" > "$PID_DIR/telecom-udp.pid"
+    log "UDP relay running on :$UDP_PORT (PID: $UDP_PID)"
+}
+
+# --- Traffic accounting ---
+start_traffic_monitor() {
+    log "Starting traffic monitor..."
+
+    while true; do
+        # Read network stats from proc
+        RX_BYTES=0
+        TX_BYTES=0
+        for iface in wlan0 wlan1 rmnet_data0 wg0; do
+            if [ -f "/sys/class/net/$iface/statistics/rx_bytes" ]; then
+                RX=$(cat "/sys/class/net/$iface/statistics/rx_bytes")
+                TX=$(cat "/sys/class/net/$iface/statistics/tx_bytes")
+                RX_BYTES=$((RX_BYTES + RX))
+                TX_BYTES=$((TX_BYTES + TX))
+            fi
+        done
+
+        cat > "$TELECOM_DIR/traffic-stats.json" << EOF
+{
+    "node": "$NODE_NAME",
+    "rx_bytes": $RX_BYTES,
+    "tx_bytes": $TX_BYTES,
+    "rx_mb": $((RX_BYTES / 1048576)),
+    "tx_mb": $((TX_BYTES / 1048576)),
+    "updated": "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+}
+EOF
+
+        sleep 60
+    done &
+
+    echo $! > "$PID_DIR/telecom-traffic.pid"
+}
+
+# --- Telecom heartbeat to API ---
+send_telecom_heartbeat() {
+    gather_cell_info
+
+    TRAFFIC=$(cat "$TELECOM_DIR/traffic-stats.json" 2>/dev/null || echo '{}')
+    CELL=$(cat "$TELECOM_DIR/cell-info.json" 2>/dev/null || echo '{}')
+    BATTERY=$(cat /sys/class/power_supply/battery/capacity 2>/dev/null || echo "0")
+
+    HEARTBEAT=$(cat << EOF
+{
+    "node_name": "$NODE_NAME",
+    "service": "telecom",
+    "battery_pct": $BATTERY,
+    "cell_info": $CELL,
+    "traffic": $TRAFFIC,
+    "dns_relay": $(kill -0 $(cat "$PID_DIR/telecom-dns.pid" 2>/dev/null) 2>/dev/null && echo "true" || echo "false"),
+    "tcp_relay": $(kill -0 $(cat "$PID_DIR/telecom-tcp.pid" 2>/dev/null) 2>/dev/null && echo "true" || echo "false"),
+    "udp_relay": $(kill -0 $(cat "$PID_DIR/telecom-udp.pid" 2>/dev/null) 2>/dev/null && echo "true" || echo "false"),
+    "timestamp": "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+}
+EOF
+)
+
+    curl -sf --connect-timeout 10 \
+        -X POST \
+        -H "Content-Type: application/json" \
+        -d "$HEARTBEAT" \
+        "$DARCLOUD_API/telecom/mesh/heartbeat" > /dev/null 2>&1
+}
+
+# --- Verify dependent services ---
+check_telecom_services() {
+    log "Verifying telecom sub-services..."
+
+    # eSIM service
+    if kill -0 $(cat "$PID_DIR/esim.pid" 2>/dev/null) 2>/dev/null; then
+        log "  eSIM service: RUNNING"
+    else
+        log "  eSIM service: NOT RUNNING — starting..."
+        /system/darcloud/bin/darcloud-esim &
+    fi
+
+    # Voice service
+    if kill -0 $(cat "$PID_DIR/voice.pid" 2>/dev/null) 2>/dev/null; then
+        log "  Voice service: RUNNING"
+    else
+        log "  Voice service: NOT RUNNING — starting..."
+        /system/darcloud/bin/darcloud-voice &
+    fi
+
+    # Messaging service
+    if kill -0 $(cat "$PID_DIR/messaging.pid" 2>/dev/null) 2>/dev/null; then
+        log "  Messaging service: RUNNING"
+    else
+        log "  Messaging service: NOT RUNNING — starting..."
+        /system/darcloud/bin/darcloud-messaging &
+    fi
+
+    # 5G modem service
+    if kill -0 $(cat "$PID_DIR/5g-modem.pid" 2>/dev/null) 2>/dev/null; then
+        log "  5G modem service: RUNNING"
+    else
+        log "  5G modem service: NOT RUNNING — starting..."
+        /system/darcloud/bin/darcloud-5g-modem &
+    fi
+}
+
+# --- Main ---
+gather_cell_info
+start_dns_relay
+start_tcp_relay
+start_udp_relay
+start_traffic_monitor
+
+log "All telecom relay services running"
+log "Checking telecom sub-services..."
+check_telecom_services
+
+# Heartbeat loop
+BEAT_COUNT=0
+while true; do
+    BEAT_COUNT=$((BEAT_COUNT + 1))
+    send_telecom_heartbeat
+
+    # Show sub-service status in heartbeat
+    ESIM_OK=$(kill -0 $(cat "$PID_DIR/esim.pid" 2>/dev/null) 2>/dev/null && echo "UP" || echo "DOWN")
+    VOICE_OK=$(kill -0 $(cat "$PID_DIR/voice.pid" 2>/dev/null) 2>/dev/null && echo "UP" || echo "DOWN")
+    MSG_OK=$(kill -0 $(cat "$PID_DIR/messaging.pid" 2>/dev/null) 2>/dev/null && echo "UP" || echo "DOWN")
+    MODEM_OK=$(kill -0 $(cat "$PID_DIR/5g-modem.pid" 2>/dev/null) 2>/dev/null && echo "UP" || echo "DOWN")
+
+    log "Telecom heartbeat #$BEAT_COUNT [eSIM:$ESIM_OK Voice:$VOICE_OK MSG:$MSG_OK 5G:$MODEM_OK]"
+
+    # Restart crashed services every 10 beats
+    if [ $((BEAT_COUNT % 10)) -eq 0 ]; then
+        check_telecom_services
+    fi
+
+    # Prune traffic log every 100 beats
+    if [ $((BEAT_COUNT % 100)) -eq 0 ]; then
+        if [ -f "$TELECOM_DIR/traffic.log" ]; then
+            LINES=$(wc -l < "$TELECOM_DIR/traffic.log")
+            if [ "$LINES" -gt 50000 ]; then
+                tail -10000 "$TELECOM_DIR/traffic.log" > "$TELECOM_DIR/traffic.tmp"
+                mv "$TELECOM_DIR/traffic.tmp" "$TELECOM_DIR/traffic.log"
+                log "Traffic log pruned to 10000 entries"
+            fi
+        fi
+    fi
+
+    sleep "$HEARTBEAT_INTERVAL"
+done

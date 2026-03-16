@@ -1,0 +1,216 @@
+#!/sbin/sh
+##############################################################################
+# DarCloud MeshTalk OS — TWRP Flashable Installer
+# Bismillah — Installs DarCloud mesh services into Android system layer
+# Runs on BARE HARDWARE — not Termux
+##############################################################################
+
+OUTFD=/proc/self/fd/$2
+ZIPFILE="$3"
+
+ui_print() { echo "ui_print $1" > "$OUTFD"; echo "ui_print" > "$OUTFD"; }
+set_progress() { echo "set_progress $1" > "$OUTFD"; }
+
+ui_print "╔══════════════════════════════════════════╗"
+ui_print "║    DarCloud MeshTalk OS v1.0             ║"
+ui_print "║    Bismillah — Sovereign Mesh Network    ║"
+ui_print "╚══════════════════════════════════════════╝"
+ui_print ""
+
+# --- Extract package ---
+TMPDIR=/tmp/darcloud-flash
+rm -rf "$TMPDIR"
+mkdir -p "$TMPDIR"
+cd "$TMPDIR"
+unzip -o "$ZIPFILE" -d "$TMPDIR"
+
+set_progress 0.1
+ui_print "[1/8] Mounting system partitions..."
+
+# Mount system (handle SAR and legacy)
+mount /system 2>/dev/null
+mount /data 2>/dev/null
+mount /vendor 2>/dev/null
+
+# Detect system root (System-as-Root vs legacy)
+if [ -f /system/system/build.prop ]; then
+    SYSTEM=/system/system
+else
+    SYSTEM=/system
+fi
+
+ui_print "  System root: $SYSTEM"
+
+set_progress 0.2
+ui_print "[2/8] Installing DarCloud system binaries..."
+
+# Create DarCloud directories
+mkdir -p "$SYSTEM/darcloud/bin"
+mkdir -p "$SYSTEM/darcloud/etc"
+mkdir -p "$SYSTEM/darcloud/lib"
+mkdir -p "$SYSTEM/darcloud/services"
+mkdir -p /data/darcloud/logs
+mkdir -p /data/darcloud/wireguard
+mkdir -p /data/darcloud/mesh
+mkdir -p /data/darcloud/discovery
+mkdir -p /data/darcloud/captive-portal
+
+# Install service scripts
+cp "$TMPDIR/system/darcloud/bin/"* "$SYSTEM/darcloud/bin/"
+cp "$TMPDIR/system/darcloud/etc/"* "$SYSTEM/darcloud/etc/"
+cp "$TMPDIR/system/darcloud/services/"* "$SYSTEM/darcloud/services/"
+chmod 755 "$SYSTEM/darcloud/bin/"*
+chmod 644 "$SYSTEM/darcloud/etc/"*
+chmod 755 "$SYSTEM/darcloud/services/"*
+
+set_progress 0.3
+ui_print "[3/10] Installing init.d boot services..."
+
+# Install init.rc service definitions
+mkdir -p "$SYSTEM/etc/init"
+cp "$TMPDIR/system/etc/init/darcloud-meshnode.rc" "$SYSTEM/etc/init/"
+cp "$TMPDIR/system/etc/init/darcloud-discovery.rc" "$SYSTEM/etc/init/"
+cp "$TMPDIR/system/etc/init/darcloud-gateway.rc" "$SYSTEM/etc/init/"
+cp "$TMPDIR/system/etc/init/darcloud-meshtalk.rc" "$SYSTEM/etc/init/"
+cp "$TMPDIR/system/etc/init/darcloud-telecom.rc" "$SYSTEM/etc/init/"
+cp "$TMPDIR/system/etc/init/darcloud-esim.rc" "$SYSTEM/etc/init/"
+cp "$TMPDIR/system/etc/init/darcloud-voice.rc" "$SYSTEM/etc/init/"
+cp "$TMPDIR/system/etc/init/darcloud-messaging.rc" "$SYSTEM/etc/init/"
+cp "$TMPDIR/system/etc/init/darcloud-5g-modem.rc" "$SYSTEM/etc/init/"
+cp "$TMPDIR/system/etc/init/darcloud-tunnel.rc" "$SYSTEM/etc/init/"
+chmod 644 "$SYSTEM/etc/init/darcloud-"*.rc
+
+set_progress 0.4
+ui_print "[4/10] Installing WireGuard kernel module..."
+
+# Detect kernel version
+KVER=$(uname -r 2>/dev/null || cat /proc/version | awk '{print $3}')
+ui_print "  Kernel: $KVER"
+
+# Install wg tools (statically compiled for ARM64)
+if [ -f "$TMPDIR/system/darcloud/bin/wg" ]; then
+    cp "$TMPDIR/system/darcloud/bin/wg" "$SYSTEM/darcloud/bin/wg"
+    cp "$TMPDIR/system/darcloud/bin/wg-quick" "$SYSTEM/darcloud/bin/wg-quick"
+    chmod 755 "$SYSTEM/darcloud/bin/wg"
+    chmod 755 "$SYSTEM/darcloud/bin/wg-quick"
+    ui_print "  WireGuard tools installed"
+fi
+
+set_progress 0.45
+ui_print "[5/10] Installing captive portal..."
+
+# Captive portal web assets
+mkdir -p "$SYSTEM/darcloud/captive-portal"
+cp "$TMPDIR/system/darcloud/captive-portal/"* "$SYSTEM/darcloud/captive-portal/" 2>/dev/null
+ui_print "  Captive portal installed"
+
+set_progress 0.5
+ui_print "[6/10] Configuring mesh network..."
+
+# Generate WireGuard keys on first boot (stored in /data)
+cat > /data/darcloud/first-boot.sh << 'FIRSTBOOT'
+#!/system/bin/sh
+# First boot key generation — runs once
+if [ ! -f /data/darcloud/wireguard/privatekey ]; then
+    /system/darcloud/bin/wg genkey | tee /data/darcloud/wireguard/privatekey | \
+        /system/darcloud/bin/wg pubkey > /data/darcloud/wireguard/publickey
+    chmod 600 /data/darcloud/wireguard/privatekey
+    chmod 644 /data/darcloud/wireguard/publickey
+fi
+# Register with DarCloud API
+/system/darcloud/bin/darcloud-register
+# Remove first-boot flag
+rm /data/darcloud/.first-boot
+FIRSTBOOT
+chmod 755 /data/darcloud/first-boot.sh
+touch /data/darcloud/.first-boot
+
+set_progress 0.6
+ui_print "[7/10] Additional data directories..."
+
+mkdir -p /data/darcloud/telecom
+
+set_progress 0.7
+ui_print "[8/10] Configuring eSIM & telecom..."
+
+# Create telecom directories
+mkdir -p /data/darcloud/esim
+mkdir -p /data/darcloud/sim
+mkdir -p /data/darcloud/voice
+mkdir -p /data/darcloud/modem
+mkdir -p /data/darcloud/messaging/sms/inbox
+mkdir -p /data/darcloud/messaging/sms/outbox
+mkdir -p /data/darcloud/messaging/sms/sent
+mkdir -p /data/darcloud/messaging/mms/inbox
+mkdir -p /data/darcloud/messaging/mms/outbox
+mkdir -p /data/darcloud/messaging/mms/sent
+mkdir -p /data/darcloud/messaging/mms/media
+ui_print "  eSIM provisioning ready"
+ui_print "  Voice calling (VoLTE/VoIP/VoNR) ready"
+ui_print "  SMS/MMS messaging ready"
+ui_print "  5G modem manager ready"
+
+# Tunnel directories
+mkdir -p /data/darcloud/tunnels/peers
+mkdir -p /data/darcloud/tunnels/metrics
+ui_print "  Tunnel peer connector ready"
+
+set_progress 0.85
+ui_print "[9/10] Setting SELinux contexts..."
+
+# Set SELinux contexts (permissive for our services)
+if [ -f /sys/fs/selinux/enforce ]; then
+    chcon -R u:object_r:system_file:s0 "$SYSTEM/darcloud" 2>/dev/null
+    chcon -R u:object_r:system_data_file:s0 /data/darcloud 2>/dev/null
+fi
+
+set_progress 0.9
+ui_print "[10/10] Installing DarCloud boot trigger..."
+
+# Add darcloud to late-init trigger
+if ! grep -q "darcloud" "$SYSTEM/etc/init/hw/init.rc" 2>/dev/null; then
+    # Use property trigger instead (safer)
+    cat > "$SYSTEM/etc/init/darcloud-trigger.rc" << 'TRIGGER'
+on property:sys.boot_completed=1
+    start darcloud_5g_modem
+    start darcloud_esim
+    start darcloud_meshnode
+    start darcloud_discovery
+    start darcloud_gateway
+    start darcloud_meshtalk
+    start darcloud_telecom
+    start darcloud_voice
+    start darcloud_messaging
+    start darcloud_tunnel
+    exec -- /system/bin/sh /data/darcloud/first-boot.sh
+TRIGGER
+    chmod 644 "$SYSTEM/etc/init/darcloud-trigger.rc"
+fi
+
+set_progress 1.0
+ui_print ""
+ui_print "╔══════════════════════════════════════════╗"
+ui_print "║  DarCloud MeshTalk OS installed!         ║"
+ui_print "║                                          ║"
+ui_print "║  Services that will start on boot:       ║"
+ui_print "║  - 5G Modem Manager (NR/SA data)         ║"
+ui_print "║  - eSIM Provisioner (LPA + APN)          ║"
+ui_print "║  - FungiMesh Node (mesh routing)         ║"
+ui_print "║  - Discovery Node (network scanning)     ║"
+ui_print "║  - WiFi Gateway (AP + captive portal)    ║"
+ui_print "║  - MeshTalk (P2P comms)                  ║"
+ui_print "║  - Telecom (cell tower relay)            ║"
+ui_print "║  - Voice (VoIP/VoLTE/VoNR calls)         ║"
+ui_print "║  - Messaging (SMS/MMS/RCS)               ║"
+ui_print "║  - Tunnel Connector (peer-to-peer)       ║"
+ui_print "║                                          ║"
+ui_print "║  Telecom: eSIM + 5G + Calls + MMS        ║"
+ui_print "║  Reboot to activate all services.        ║"
+ui_print "╚══════════════════════════════════════════╝"
+
+# Cleanup
+umount /system 2>/dev/null
+umount /vendor 2>/dev/null
+rm -rf "$TMPDIR"
+
+exit 0

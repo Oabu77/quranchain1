@@ -1,0 +1,134 @@
+#!/system/bin/sh
+##############################################################################
+# DarCloud MeshTalk OS — Master Control
+# Start/stop/status for all DarCloud services
+# Usage: darcloud-ctl {start|stop|status|restart}
+##############################################################################
+
+. /system/darcloud/etc/darcloud.conf
+
+SERVICES="5g-modem esim meshnode discovery gateway meshtalk telecom voice messaging tunnel"
+
+case "$1" in
+    start)
+        echo "Bismillah — Starting DarCloud MeshTalk OS..."
+        for svc in $SERVICES; do
+            if [ -f "$PID_DIR/$svc.pid" ] && kill -0 "$(cat "$PID_DIR/$svc.pid")" 2>/dev/null; then
+                echo "  $svc: already running (PID $(cat "$PID_DIR/$svc.pid"))"
+            else
+                echo "  Starting $svc..."
+                /system/darcloud/bin/darcloud-$svc &
+                sleep 2
+                echo "  $svc: started"
+            fi
+        done
+        echo "All services started."
+        ;;
+    stop)
+        echo "Stopping DarCloud services..."
+        for svc in $SERVICES; do
+            if [ -f "$PID_DIR/$svc.pid" ]; then
+                PID=$(cat "$PID_DIR/$svc.pid")
+                kill "$PID" 2>/dev/null
+                # Also kill child processes
+                pkill -P "$PID" 2>/dev/null
+                rm -f "$PID_DIR/$svc.pid"
+                echo "  $svc: stopped"
+            else
+                echo "  $svc: not running"
+            fi
+        done
+        # Stop auxiliary services
+        for aux in health-api captive-portal meshtalk-text meshtalk-voice meshtalk-radio telecom-dns telecom-tcp telecom-udp telecom-traffic meshtalk-api voice-rtp voice-srtp voice-sip voice-mesh voice-cmd voice-health esim-health 5g-signal 5g-usage 5g-health msg-sms-listener msg-mms-listener msg-mesh msg-cmd msg-health tunnel-health tunnel-health-api; do
+            if [ -f "$PID_DIR/$aux.pid" ]; then
+                kill "$(cat "$PID_DIR/$aux.pid")" 2>/dev/null
+                rm -f "$PID_DIR/$aux.pid"
+            fi
+        done
+        echo "All services stopped."
+        ;;
+    status)
+        echo "╔══════════════════════════════════════════╗"
+        echo "║    DarCloud MeshTalk OS — Status         ║"
+        echo "╚══════════════════════════════════════════╝"
+        echo ""
+        BATTERY=$(cat /sys/class/power_supply/battery/capacity 2>/dev/null || echo "?")
+        UPTIME=$(uptime 2>/dev/null || cat /proc/uptime | awk '{print $1}')
+        echo "Battery: ${BATTERY}%  |  Uptime: $UPTIME"
+        echo "Node: $(cat $MESH_DIR/node.conf 2>/dev/null | grep NODE_NAME | cut -d= -f2)"
+        echo "Mesh IP: $(cat $MESH_DIR/mesh-ip 2>/dev/null || echo 'not assigned')"
+        echo ""
+        for svc in $SERVICES; do
+            if [ -f "$PID_DIR/$svc.pid" ] && kill -0 "$(cat "$PID_DIR/$svc.pid")" 2>/dev/null; then
+                echo "  ● $svc: RUNNING (PID $(cat "$PID_DIR/$svc.pid"))"
+            else
+                echo "  ○ $svc: STOPPED"
+            fi
+        done
+        echo ""
+        # WireGuard status
+        if ip link show wg0 > /dev/null 2>&1; then
+            PEERS=$(/system/darcloud/bin/wg show wg0 2>/dev/null | grep -c "peer:" || echo "0")
+            echo "WireGuard: UP ($PEERS peers)"
+        else
+            echo "WireGuard: DOWN"
+        fi
+        # WiFi AP status
+        AP_IFACE=$(cat "$DATA_DIR/ap-interface" 2>/dev/null)
+        if [ -n "$AP_IFACE" ] && ip link show "$AP_IFACE" > /dev/null 2>&1; then
+            CLIENTS=$(ip neigh show dev "$AP_IFACE" 2>/dev/null | grep -c REACHABLE || echo "0")
+            echo "WiFi AP: UP on $AP_IFACE ($CLIENTS clients)"
+        else
+            echo "WiFi AP: DOWN"
+        fi
+        echo ""
+        # Telecom status
+        echo "--- Telecom ---"
+        NETWORK=$(getprop gsm.network.type 2>/dev/null || echo "?")
+        OPERATOR=$(getprop gsm.operator.alpha 2>/dev/null || echo "?")
+        SIGNAL=$(dumpsys telephony.registry 2>/dev/null | grep -o "mSignalStrength=[0-9-]*" | head -1 | cut -d= -f2)
+        CARRIER=$(cat "$DATA_DIR/modem/carrier" 2>/dev/null || echo "?")
+        CARRIER_TYPE=$(cat "$DATA_DIR/modem/carrier-type" 2>/dev/null || echo "?")
+        CARRIER_APN=$(cat "$DATA_DIR/modem/carrier-apn" 2>/dev/null || echo "?")
+        NR_RSRP=$(cat "$DATA_DIR/modem/signal-status.json" 2>/dev/null | grep -o '"nr_rsrp":"[^"]*"' | cut -d'"' -f4 || echo "?")
+        NR_SINR=$(cat "$DATA_DIR/modem/signal-status.json" 2>/dev/null | grep -o '"nr_sinr":"[^"]*"' | cut -d'"' -f4 || echo "?")
+        echo "Network: $NETWORK | Operator: $OPERATOR | Signal: ${SIGNAL}dBm"
+        echo "Carrier: $CARRIER ($CARRIER_TYPE) | APN: $CARRIER_APN"
+        echo "5G NR RSRP: ${NR_RSRP}dBm | SINR: ${NR_SINR}dB"
+        # eSIM
+        IMSI=$(cat "$DATA_DIR/esim/imsi" 2>/dev/null || echo "not provisioned")
+        echo "eSIM IMSI: $IMSI"
+        # Voice
+        SIP_URI=$(cat "$DATA_DIR/voice/sip-uri" 2>/dev/null || echo "unregistered")
+        PHONE=$(cat "$DATA_DIR/voice/phone-number" 2>/dev/null || echo "unassigned")
+        ACTIVE_CALL=$(cat "$DATA_DIR/voice/active-call-id" 2>/dev/null || echo "none")
+        echo "Phone: $PHONE | SIP: $SIP_URI | Active Call: $ACTIVE_CALL"
+        # Messaging
+        SMS_IN=$(ls "$DATA_DIR/messaging/sms/inbox/" 2>/dev/null | wc -l)
+        MMS_IN=$(ls "$DATA_DIR/messaging/mms/inbox/" 2>/dev/null | wc -l)
+        echo "SMS Inbox: $SMS_IN | MMS Inbox: $MMS_IN"
+        # Data usage
+        DATA_MB=$(cat "$DATA_DIR/modem/data-usage.json" 2>/dev/null | grep -o '"session_total_mb":[0-9]*' | cut -d: -f2 || echo "0")
+        echo "Data Used: ${DATA_MB}MB"
+        echo ""
+        # Tunnel status
+        echo "--- Tunnels ---"
+        EXT_EP=$(cat "$DATA_DIR/tunnels/external-endpoint" 2>/dev/null || echo "unknown")
+        NAT=$(cat "$DATA_DIR/tunnels/nat-type" 2>/dev/null || echo "unknown")
+        TUNNEL_PEERS=$(cat "$DATA_DIR/tunnels/tunnel-status.json" 2>/dev/null | grep -o '"total_peers":[0-9]*' | cut -d: -f2 || echo "0")
+        TUNNEL_ALIVE=$(cat "$DATA_DIR/tunnels/tunnel-status.json" 2>/dev/null | grep -o '"alive_peers":[0-9]*' | cut -d: -f2 || echo "0")
+        WG_RX=$(cat "$DATA_DIR/tunnels/metrics/tunnel-bandwidth.json" 2>/dev/null | grep -o '"wg_rx_mb":[0-9]*' | cut -d: -f2 || echo "0")
+        WG_TX=$(cat "$DATA_DIR/tunnels/metrics/tunnel-bandwidth.json" 2>/dev/null | grep -o '"wg_tx_mb":[0-9]*' | cut -d: -f2 || echo "0")
+        echo "Endpoint: $EXT_EP | NAT: $NAT"
+        echo "Peers: $TUNNEL_ALIVE/$TUNNEL_PEERS alive | RX: ${WG_RX}MB TX: ${WG_TX}MB"
+        ;;
+    restart)
+        $0 stop
+        sleep 3
+        $0 start
+        ;;
+    *)
+        echo "DarCloud MeshTalk OS Control"
+        echo "Usage: darcloud-ctl {start|stop|status|restart}"
+        ;;
+esac

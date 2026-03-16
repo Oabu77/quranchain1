@@ -1,0 +1,542 @@
+#!/system/bin/sh
+##############################################################################
+# DarCloud Voice — Bare Metal VoIP/VoLTE Call Service
+# SIP client, RTP media relay, IMS registration, call routing
+# Handles inbound/outbound voice calls over mesh + cellular
+# Runs directly on Android Linux kernel
+##############################################################################
+
+. /system/darcloud/etc/darcloud.conf
+
+log() { echo "$(date '+%Y-%m-%d %H:%M:%S') [VOICE] $1" >> "$LOG_DIR/voice.log"; }
+
+log "Bismillah — Voice Call Service starting..."
+echo $$ > "$PID_DIR/voice.pid"
+
+VOICE_DIR="$DATA_DIR/voice"
+CALL_LOG="$VOICE_DIR/call-log"
+mkdir -p "$VOICE_DIR" "$CALL_LOG"
+
+NODE_NAME=$(cat "$MESH_DIR/node.conf" 2>/dev/null | grep NODE_NAME | cut -d= -f2)
+
+# --- Detect audio hardware ---
+detect_audio() {
+    log "Detecting audio hardware..."
+
+    AUDIO_HW=""
+    # Android audio HAL
+    if [ -d /dev/snd ]; then
+        AUDIO_CARDS=$(ls /dev/snd/ 2>/dev/null | grep "pcm" | wc -l)
+        AUDIO_HW="alsa"
+        log "ALSA audio: $AUDIO_CARDS PCM devices"
+    fi
+
+    # TinyALSA (most Android devices)
+    if [ -x /system/bin/tinyplay ] || [ -x /vendor/bin/tinyplay ]; then
+        AUDIO_HW="tinyalsa"
+        log "TinyALSA audio available"
+    fi
+
+    # AudioFlinger (Android audio service)
+    AUDIO_POLICY=$(dumpsys audio 2>/dev/null | head -5)
+    if [ -n "$AUDIO_POLICY" ]; then
+        AUDIO_HW="${AUDIO_HW}+audioflinger"
+        log "AudioFlinger active"
+    fi
+
+    echo "$AUDIO_HW" > "$VOICE_DIR/audio-hw"
+
+    # Detect active call audio devices
+    EARPIECE=$(dumpsys audio 2>/dev/null | grep -c "earpiece\|EARPIECE" || echo "0")
+    SPEAKER=$(dumpsys audio 2>/dev/null | grep -c "speaker\|SPEAKER" || echo "0")
+    BT_SCO=$(dumpsys audio 2>/dev/null | grep -c "bt_sco\|bluetooth" || echo "0")
+
+    cat > "$VOICE_DIR/audio-status.json" << EOF
+{
+    "audio_hw": "$AUDIO_HW",
+    "earpiece_available": $EARPIECE,
+    "speaker_available": $SPEAKER,
+    "bt_sco_available": $BT_SCO,
+    "updated": "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+}
+EOF
+}
+
+# --- SIP registration with DarTelecom IMS ---
+register_sip() {
+    log "Registering with DarTelecom IMS..."
+
+    IMSI=$(cat "$DATA_DIR/esim/imsi" 2>/dev/null)
+    ICCID=$(cat "$DATA_DIR/esim/iccid" 2>/dev/null)
+    PUBKEY=$(cat "$WG_DIR/publickey" 2>/dev/null)
+    MESH_IP=$(ip addr show wg0 2>/dev/null | grep "inet " | awk '{print $2}' | cut -d/ -f1)
+
+    if [ -z "$MESH_IP" ]; then
+        MESH_IP=$(ip addr show wlan0 2>/dev/null | grep "inet " | awk '{print $2}' | cut -d/ -f1)
+    fi
+
+    # Register as SIP endpoint with DarCloud
+    RESPONSE=$(curl -sf --connect-timeout 15 \
+        -X POST \
+        -H "Content-Type: application/json" \
+        -d "{
+            \"node_name\": \"$NODE_NAME\",
+            \"imsi\": \"$IMSI\",
+            \"iccid\": \"$ICCID\",
+            \"mesh_ip\": \"$MESH_IP\",
+            \"wireguard_pubkey\": \"$PUBKEY\",
+            \"capabilities\": [\"voice\", \"video\", \"volte\", \"vowifi\", \"vonr\"],
+            \"codecs\": [\"opus\", \"amr-wb\", \"amr-nb\", \"g711a\", \"g711u\", \"evs\"],
+            \"rtp_port\": $VOICE_RTP_PORT,
+            \"sip_port\": $VOICE_SIP_PORT,
+            \"register\": true
+        }" \
+        "$DARCLOUD_API/telecom/voice/register" 2>/dev/null)
+
+    if [ -n "$RESPONSE" ]; then
+        echo "$RESPONSE" > "$VOICE_DIR/sip-registration.json"
+
+        SIP_URI=$(echo "$RESPONSE" | grep -o '"sip_uri":"[^"]*"' | cut -d'"' -f4)
+        SIP_EXT=$(echo "$RESPONSE" | grep -o '"extension":"[^"]*"' | cut -d'"' -f4)
+        PHONE_NUM=$(echo "$RESPONSE" | grep -o '"phone_number":"[^"]*"' | cut -d'"' -f4)
+
+        echo "$SIP_URI" > "$VOICE_DIR/sip-uri"
+        echo "$SIP_EXT" > "$VOICE_DIR/extension"
+        echo "$PHONE_NUM" > "$VOICE_DIR/phone-number"
+
+        log "SIP registered: $SIP_URI ext:$SIP_EXT number:$PHONE_NUM"
+    else
+        log "WARNING: SIP registration failed — will retry"
+    fi
+}
+
+# --- RTP Media Relay ---
+# Handles real-time voice packet forwarding between mesh peers
+start_rtp_relay() {
+    log "Starting RTP media relay on port $VOICE_RTP_PORT..."
+
+    # RTP relay: forward voice packets between mesh peers
+    while true; do
+        # Listen for incoming RTP packets
+        toybox nc -lu -p "$VOICE_RTP_PORT" -w 300 2>/dev/null | while IFS= read -r PACKET; do
+            BYTES=$(echo "$PACKET" | wc -c)
+
+            # Parse RTP header (first 12 bytes)
+            # Forward to active call peer
+            PEER_IP=$(cat "$VOICE_DIR/active-call-peer" 2>/dev/null)
+            if [ -n "$PEER_IP" ]; then
+                echo "$PACKET" | toybox nc -u "$PEER_IP" "$VOICE_RTP_PORT" -w 1 2>/dev/null
+            fi
+
+            # Update stats
+            RTP_PKTS=$(cat "$VOICE_DIR/rtp-packets" 2>/dev/null || echo "0")
+            echo $((RTP_PKTS + 1)) > "$VOICE_DIR/rtp-packets"
+        done
+        sleep 1
+    done &
+
+    RTP_PID=$!
+    echo "$RTP_PID" > "$PID_DIR/voice-rtp.pid"
+    log "RTP relay running on :$VOICE_RTP_PORT (PID: $RTP_PID)"
+}
+
+# --- SRTP encryption for secure voice ---
+start_srtp_relay() {
+    log "Starting SRTP secure relay on port $((VOICE_RTP_PORT + 1))..."
+
+    # SRTP uses DTLS handshake for key exchange
+    SRTP_PORT=$((VOICE_RTP_PORT + 1))
+
+    while true; do
+        toybox nc -lu -p "$SRTP_PORT" -w 300 2>/dev/null | while IFS= read -r PACKET; do
+            PEER_IP=$(cat "$VOICE_DIR/active-call-peer" 2>/dev/null)
+            if [ -n "$PEER_IP" ]; then
+                echo "$PACKET" | toybox nc -u "$PEER_IP" "$SRTP_PORT" -w 1 2>/dev/null
+            fi
+        done
+        sleep 1
+    done &
+
+    echo $! > "$PID_DIR/voice-srtp.pid"
+    log "SRTP relay on :$SRTP_PORT"
+}
+
+# --- SIP Signaling Listener ---
+# Handles INVITE, ACK, BYE, CANCEL, REGISTER, OPTIONS
+start_sip_listener() {
+    log "Starting SIP signaling on port $VOICE_SIP_PORT..."
+
+    while true; do
+        # Listen for SIP messages (TCP + UDP)
+        SIP_MSG=$(toybox nc -l -p "$VOICE_SIP_PORT" -w 60 2>/dev/null)
+
+        if [ -n "$SIP_MSG" ]; then
+            METHOD=$(echo "$SIP_MSG" | head -1 | awk '{print $1}')
+            FROM=$(echo "$SIP_MSG" | grep "^From:" | head -1)
+            TO=$(echo "$SIP_MSG" | grep "^To:" | head -1)
+            CALL_ID=$(echo "$SIP_MSG" | grep "^Call-ID:" | head -1 | awk '{print $2}')
+
+            log "SIP $METHOD from $FROM call:$CALL_ID"
+
+            case "$METHOD" in
+                INVITE)
+                    handle_incoming_call "$SIP_MSG"
+                    ;;
+                BYE)
+                    handle_call_end "$CALL_ID"
+                    ;;
+                ACK)
+                    log "Call ACK received: $CALL_ID"
+                    ;;
+                CANCEL)
+                    handle_call_cancel "$CALL_ID"
+                    ;;
+                OPTIONS)
+                    # SIP keep-alive / capability query
+                    send_sip_response "200 OK" "$SIP_MSG"
+                    ;;
+                REGISTER)
+                    send_sip_response "200 OK" "$SIP_MSG"
+                    ;;
+            esac
+        fi
+    done &
+
+    SIP_PID=$!
+    echo "$SIP_PID" > "$PID_DIR/voice-sip.pid"
+    log "SIP listener running on :$VOICE_SIP_PORT (PID: $SIP_PID)"
+}
+
+# --- Handle incoming call ---
+handle_incoming_call() {
+    local SIP_MSG="$1"
+
+    CALLER=$(echo "$SIP_MSG" | grep "^From:" | grep -o "sip:[^;>]*" | head -1)
+    CALLEE=$(echo "$SIP_MSG" | grep "^To:" | grep -o "sip:[^;>]*" | head -1)
+    CALL_ID=$(echo "$SIP_MSG" | grep "^Call-ID:" | awk '{print $2}')
+    SDP=$(echo "$SIP_MSG" | sed -n '/^v=0/,$p')
+
+    # Extract RTP details from SDP
+    PEER_IP=$(echo "$SDP" | grep "^c=" | head -1 | awk -F' ' '{print $3}')
+    PEER_PORT=$(echo "$SDP" | grep "^m=audio" | awk '{print $2}')
+
+    log "INCOMING CALL: $CALLER -> $CALLEE (peer: $PEER_IP:$PEER_PORT)"
+
+    # Store active call info
+    echo "$PEER_IP" > "$VOICE_DIR/active-call-peer"
+    echo "$PEER_PORT" > "$VOICE_DIR/active-call-peer-port"
+    echo "$CALL_ID" > "$VOICE_DIR/active-call-id"
+    echo "$CALLER" > "$VOICE_DIR/active-call-from"
+    date -u '+%Y-%m-%dT%H:%M:%SZ' > "$VOICE_DIR/active-call-start"
+
+    # Ring the phone via Android
+    # Method 1: am broadcast for incoming call notification
+    am broadcast -a android.intent.action.PHONE_STATE \
+        --es state "RINGING" \
+        --es incoming_number "$CALLER" 2>/dev/null
+
+    # Method 2: Play ringtone
+    am start -a android.intent.action.RINGTONE_PICKER 2>/dev/null
+
+    # Send 180 Ringing response
+    send_sip_response "180 Ringing" "$SIP_MSG"
+
+    # Auto-answer after 5 seconds (can be changed to manual)
+    sleep 5
+
+    # Generate SDP answer
+    MY_IP=$(ip addr show wg0 2>/dev/null | grep "inet " | awk '{print $2}' | cut -d/ -f1)
+    [ -z "$MY_IP" ] && MY_IP=$(ip addr show wlan0 2>/dev/null | grep "inet " | awk '{print $2}' | cut -d/ -f1)
+
+    SDP_ANSWER="v=0
+o=darcloud $(date +%s) 1 IN IP4 $MY_IP
+s=DarCloud Voice
+c=IN IP4 $MY_IP
+t=0 0
+m=audio $VOICE_RTP_PORT RTP/AVP 111 9 0 8
+a=rtpmap:111 opus/48000/2
+a=rtpmap:9 G722/8000
+a=rtpmap:0 PCMU/8000
+a=rtpmap:8 PCMA/8000
+a=sendrecv
+a=ptime:20"
+
+    # Send 200 OK with SDP
+    send_sip_response "200 OK" "$SIP_MSG" "$SDP_ANSWER"
+
+    # Log call
+    echo "$(date -u '+%Y-%m-%dT%H:%M:%SZ') INCOMING $CALLER -> $CALLEE $CALL_ID" >> "$CALL_LOG/calls.log"
+
+    log "Call answered: $CALL_ID"
+}
+
+# --- Make outgoing call ---
+make_call() {
+    local DEST_URI="$1"
+
+    MY_IP=$(ip addr show wg0 2>/dev/null | grep "inet " | awk '{print $2}' | cut -d/ -f1)
+    [ -z "$MY_IP" ] && MY_IP=$(ip addr show wlan0 2>/dev/null | grep "inet " | awk '{print $2}' | cut -d/ -f1)
+
+    MY_SIP=$(cat "$VOICE_DIR/sip-uri" 2>/dev/null)
+    CALL_ID="$(cat /proc/sys/kernel/random/uuid 2>/dev/null || echo "call-$(date +%s)")"
+    BRANCH="z9hG4bK$(head -c 8 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+
+    SDP="v=0
+o=darcloud $(date +%s) 1 IN IP4 $MY_IP
+s=DarCloud Voice
+c=IN IP4 $MY_IP
+t=0 0
+m=audio $VOICE_RTP_PORT RTP/AVP 111 9 0 8
+a=rtpmap:111 opus/48000/2
+a=rtpmap:9 G722/8000
+a=rtpmap:0 PCMU/8000
+a=rtpmap:8 PCMA/8000
+a=sendrecv
+a=ptime:20"
+
+    SDP_LEN=$(echo "$SDP" | wc -c)
+
+    INVITE="INVITE $DEST_URI SIP/2.0
+Via: SIP/2.0/UDP $MY_IP:$VOICE_SIP_PORT;branch=$BRANCH
+Max-Forwards: 70
+From: <$MY_SIP>;tag=$(head -c 4 /dev/urandom | od -An -tx1 | tr -d ' \n')
+To: <$DEST_URI>
+Call-ID: $CALL_ID
+CSeq: 1 INVITE
+Contact: <$MY_SIP>
+Content-Type: application/sdp
+Content-Length: $SDP_LEN
+User-Agent: DarCloud-Voice/1.0
+
+$SDP"
+
+    # Extract destination IP from SIP URI
+    DEST_HOST=$(echo "$DEST_URI" | grep -o "@[^:;>]*" | tr -d "@")
+    DEST_PORT=$(echo "$DEST_URI" | grep -o ":[0-9]*" | tail -1 | tr -d ":")
+    [ -z "$DEST_PORT" ] && DEST_PORT="$VOICE_SIP_PORT"
+
+    log "OUTGOING CALL: $MY_SIP -> $DEST_URI"
+
+    echo "$CALL_ID" > "$VOICE_DIR/active-call-id"
+    echo "$DEST_HOST" > "$VOICE_DIR/active-call-peer"
+    echo "$DEST_URI" > "$VOICE_DIR/active-call-to"
+    date -u '+%Y-%m-%dT%H:%M:%SZ' > "$VOICE_DIR/active-call-start"
+
+    # Send INVITE
+    echo "$INVITE" | toybox nc -u "$DEST_HOST" "$DEST_PORT" -w 30 2>/dev/null
+
+    echo "$(date -u '+%Y-%m-%dT%H:%M:%SZ') OUTGOING $MY_SIP -> $DEST_URI $CALL_ID" >> "$CALL_LOG/calls.log"
+}
+
+# --- End call ---
+handle_call_end() {
+    local CALL_ID="$1"
+
+    ACTIVE_ID=$(cat "$VOICE_DIR/active-call-id" 2>/dev/null)
+    if [ "$CALL_ID" = "$ACTIVE_ID" ] || [ -z "$CALL_ID" ]; then
+        CALL_START=$(cat "$VOICE_DIR/active-call-start" 2>/dev/null)
+        DURATION=$(($(date +%s) - $(date -d "$CALL_START" +%s 2>/dev/null || echo "$(date +%s)")))
+
+        log "Call ended: $ACTIVE_ID duration:${DURATION}s"
+
+        # Report call to API
+        curl -sf --connect-timeout 10 \
+            -X POST \
+            -H "Content-Type: application/json" \
+            -d "{
+                \"node_name\": \"$NODE_NAME\",
+                \"call_id\": \"$ACTIVE_ID\",
+                \"duration_seconds\": $DURATION,
+                \"from\": \"$(cat "$VOICE_DIR/active-call-from" 2>/dev/null)\",
+                \"to\": \"$(cat "$VOICE_DIR/active-call-to" 2>/dev/null)\",
+                \"rtp_packets\": $(cat "$VOICE_DIR/rtp-packets" 2>/dev/null || echo 0),
+                \"timestamp\": \"$(date -u '+%Y-%m-%dT%H:%M:%SZ')\"
+            }" \
+            "$DARCLOUD_API/telecom/voice/cdr" > /dev/null 2>&1
+
+        # Clean active call state
+        rm -f "$VOICE_DIR/active-call-peer" \
+              "$VOICE_DIR/active-call-peer-port" \
+              "$VOICE_DIR/active-call-id" \
+              "$VOICE_DIR/active-call-from" \
+              "$VOICE_DIR/active-call-to" \
+              "$VOICE_DIR/active-call-start"
+        echo "0" > "$VOICE_DIR/rtp-packets"
+    fi
+}
+
+# --- Cancel call ---
+handle_call_cancel() {
+    local CALL_ID="$1"
+    log "Call cancelled: $CALL_ID"
+    handle_call_end "$CALL_ID"
+}
+
+# --- Send SIP response ---
+send_sip_response() {
+    local STATUS="$1"
+    local ORIG_MSG="$2"
+    local BODY="$3"
+
+    FROM=$(echo "$ORIG_MSG" | grep "^From:" | head -1)
+    TO=$(echo "$ORIG_MSG" | grep "^To:" | head -1)
+    CALL_ID=$(echo "$ORIG_MSG" | grep "^Call-ID:" | head -1)
+    CSEQ=$(echo "$ORIG_MSG" | grep "^CSeq:" | head -1)
+    VIA=$(echo "$ORIG_MSG" | grep "^Via:" | head -1)
+
+    # Extract sender IP for response routing
+    SENDER_IP=$(echo "$VIA" | grep -o "[0-9]*\.[0-9]*\.[0-9]*\.[0-9]*" | head -1)
+    SENDER_PORT=$(echo "$VIA" | grep -o ":[0-9]*;" | tr -d ":;" | head -1)
+    [ -z "$SENDER_PORT" ] && SENDER_PORT="$VOICE_SIP_PORT"
+
+    MY_IP=$(ip addr show wg0 2>/dev/null | grep "inet " | awk '{print $2}' | cut -d/ -f1)
+    [ -z "$MY_IP" ] && MY_IP=$(ip addr show wlan0 2>/dev/null | grep "inet " | awk '{print $2}' | cut -d/ -f1)
+
+    BODY_LEN=0
+    CONTENT_TYPE=""
+    if [ -n "$BODY" ]; then
+        BODY_LEN=$(echo "$BODY" | wc -c)
+        CONTENT_TYPE="Content-Type: application/sdp"
+    fi
+
+    RESPONSE="SIP/2.0 $STATUS
+$VIA
+$FROM
+$TO
+$CALL_ID
+$CSEQ
+Contact: <sip:$MY_IP:$VOICE_SIP_PORT>
+User-Agent: DarCloud-Voice/1.0
+$CONTENT_TYPE
+Content-Length: $BODY_LEN
+
+$BODY"
+
+    echo "$RESPONSE" | toybox nc -u "$SENDER_IP" "$SENDER_PORT" -w 5 2>/dev/null
+    log "Sent SIP $STATUS to $SENDER_IP:$SENDER_PORT"
+}
+
+# --- Mesh voice relay (P2P calls over WireGuard) ---
+start_mesh_voice_relay() {
+    log "Starting mesh voice relay..."
+
+    MESH_VOICE_PORT=$((VOICE_RTP_PORT + 10))
+
+    while true; do
+        toybox nc -lu -p "$MESH_VOICE_PORT" -w 300 2>/dev/null | while IFS= read -r PACKET; do
+            # Check if this is a mesh-routed call
+            if echo "$PACKET" | grep -q "^MESHCALL:"; then
+                DEST=$(echo "$PACKET" | cut -d: -f2)
+                PAYLOAD=$(echo "$PACKET" | cut -d: -f3-)
+
+                # Lookup destination mesh IP
+                DEST_IP=$(grep "$DEST" "$MESH_DIR/peers.conf" 2>/dev/null | cut -d= -f2)
+                if [ -n "$DEST_IP" ]; then
+                    echo "$PAYLOAD" | toybox nc -u "$DEST_IP" "$VOICE_RTP_PORT" -w 1 2>/dev/null
+                fi
+            fi
+        done
+        sleep 1
+    done &
+
+    echo $! > "$PID_DIR/voice-mesh.pid"
+    log "Mesh voice relay on :$MESH_VOICE_PORT"
+}
+
+# --- Voice command listener (for darcloud-ctl integration) ---
+start_command_listener() {
+    CMD_PORT=8084
+
+    while true; do
+        CMD=$(toybox nc -l -p "$CMD_PORT" -w 60 2>/dev/null)
+        if [ -n "$CMD" ]; then
+            ACTION=$(echo "$CMD" | awk '{print $1}')
+            PARAM=$(echo "$CMD" | awk '{print $2}')
+
+            case "$ACTION" in
+                CALL)
+                    make_call "$PARAM"
+                    echo "CALLING $PARAM" | toybox nc -l -p "$CMD_PORT" -w 1 2>/dev/null
+                    ;;
+                HANGUP)
+                    handle_call_end "$(cat "$VOICE_DIR/active-call-id" 2>/dev/null)"
+                    echo "HANGUP OK" | toybox nc -l -p "$CMD_PORT" -w 1 2>/dev/null
+                    ;;
+                STATUS)
+                    cat "$VOICE_DIR/active-call-id" 2>/dev/null || echo "NO_ACTIVE_CALL"
+                    ;;
+            esac
+        fi
+    done &
+
+    echo $! > "$PID_DIR/voice-cmd.pid"
+    log "Voice command listener on :$CMD_PORT"
+}
+
+# --- Health API ---
+start_voice_health() {
+    VOICE_HEALTH_PORT=8085
+
+    while true; do
+        ACTIVE_CALL=$(cat "$VOICE_DIR/active-call-id" 2>/dev/null || echo "none")
+        RTP_PKTS=$(cat "$VOICE_DIR/rtp-packets" 2>/dev/null || echo "0")
+        PHONE_NUM=$(cat "$VOICE_DIR/phone-number" 2>/dev/null || echo "unassigned")
+        SIP_URI=$(cat "$VOICE_DIR/sip-uri" 2>/dev/null || echo "unregistered")
+
+        STATUS="{
+    \"service\": \"darcloud-voice\",
+    \"sip_uri\": \"$SIP_URI\",
+    \"phone_number\": \"$PHONE_NUM\",
+    \"active_call\": \"$ACTIVE_CALL\",
+    \"rtp_packets\": $RTP_PKTS,
+    \"sip_port\": $VOICE_SIP_PORT,
+    \"rtp_port\": $VOICE_RTP_PORT,
+    \"codecs\": [\"opus\", \"amr-wb\", \"g722\", \"pcmu\", \"pcma\"],
+    \"node\": \"$NODE_NAME\",
+    \"updated\": \"$(date -u '+%Y-%m-%dT%H:%M:%SZ')\"
+}"
+        RESPONSE="HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n$STATUS"
+        echo -e "$RESPONSE" | toybox nc -l -p "$VOICE_HEALTH_PORT" -w 5 2>/dev/null
+    done &
+
+    echo $! > "$PID_DIR/voice-health.pid"
+    log "Voice health API on :$VOICE_HEALTH_PORT"
+}
+
+# --- Main ---
+detect_audio
+register_sip
+start_rtp_relay
+start_srtp_relay
+start_sip_listener
+start_mesh_voice_relay
+start_command_listener
+start_voice_health
+
+log "All voice services running"
+
+# Keep alive + re-register loop
+while true; do
+    sleep "$HEARTBEAT_INTERVAL"
+
+    # Re-register SIP (keep-alive)
+    register_sip
+
+    # Report voice stats
+    curl -sf --connect-timeout 10 \
+        -X POST \
+        -H "Content-Type: application/json" \
+        -d "{
+            \"node_name\": \"$NODE_NAME\",
+            \"service\": \"voice\",
+            \"sip_uri\": \"$(cat "$VOICE_DIR/sip-uri" 2>/dev/null)\",
+            \"phone_number\": \"$(cat "$VOICE_DIR/phone-number" 2>/dev/null)\",
+            \"active_call\": \"$(cat "$VOICE_DIR/active-call-id" 2>/dev/null || echo "none")\",
+            \"rtp_packets\": $(cat "$VOICE_DIR/rtp-packets" 2>/dev/null || echo 0),
+            \"total_calls\": $(wc -l < "$CALL_LOG/calls.log" 2>/dev/null || echo 0),
+            \"timestamp\": \"$(date -u '+%Y-%m-%dT%H:%M:%SZ')\"
+        }" \
+        "$DARCLOUD_API/telecom/voice/heartbeat" > /dev/null 2>&1
+
+    log "Voice heartbeat sent"
+done

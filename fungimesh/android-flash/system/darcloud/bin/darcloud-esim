@@ -1,0 +1,408 @@
+#!/system/bin/sh
+##############################################################################
+# DarCloud eSIM — Bare Metal eSIM Provisioning & Modem Manager
+# eUICC LPA, AT modem interface, profile download & activation
+# PLMN 99970 (DarTelecom private network)
+# Runs directly on Android Linux kernel
+##############################################################################
+
+. /system/darcloud/etc/darcloud.conf
+
+log() { echo "$(date '+%Y-%m-%d %H:%M:%S') [ESIM] $1" >> "$LOG_DIR/esim.log"; }
+
+log "Bismillah — eSIM Provisioning Service starting..."
+echo $$ > "$PID_DIR/esim.pid"
+
+ESIM_DIR="$DATA_DIR/esim"
+SIM_DIR="$DATA_DIR/sim"
+mkdir -p "$ESIM_DIR" "$SIM_DIR"
+
+NODE_NAME=$(cat "$MESH_DIR/node.conf" 2>/dev/null | grep NODE_NAME | cut -d= -f2)
+
+# --- Detect modem device ---
+detect_modem() {
+    log "Detecting cellular modem..."
+
+    MODEM_DEV=""
+
+    # Qualcomm QMI modems (most Samsung devices)
+    for dev in /dev/smd* /dev/qmi_* /dev/cdc-wdm*; do
+        if [ -e "$dev" ]; then
+            MODEM_DEV="$dev"
+            MODEM_TYPE="qmi"
+            break
+        fi
+    done
+
+    # MBIM modems (some newer devices)
+    if [ -z "$MODEM_DEV" ]; then
+        for dev in /dev/cdc-wdm* /dev/wwan*; do
+            if [ -e "$dev" ]; then
+                MODEM_DEV="$dev"
+                MODEM_TYPE="mbim"
+                break
+            fi
+        done
+    fi
+
+    # AT command interface (fallback)
+    if [ -z "$MODEM_DEV" ]; then
+        for dev in /dev/ttyUSB* /dev/ttyACM* /dev/ttyHS* /dev/ttyMSM*; do
+            if [ -e "$dev" ]; then
+                MODEM_DEV="$dev"
+                MODEM_TYPE="at"
+                break
+            fi
+        done
+    fi
+
+    # Android RIL socket (last resort)
+    if [ -z "$MODEM_DEV" ]; then
+        if [ -S /dev/socket/rild ] || [ -S /dev/socket/rild-debug ]; then
+            MODEM_DEV="/dev/socket/rild"
+            MODEM_TYPE="ril"
+        fi
+    fi
+
+    if [ -n "$MODEM_DEV" ]; then
+        log "Modem found: $MODEM_DEV (type: $MODEM_TYPE)"
+    else
+        log "WARNING: No modem device detected — using Android telephony API"
+        MODEM_TYPE="android"
+    fi
+
+    echo "$MODEM_TYPE" > "$ESIM_DIR/modem-type"
+    echo "$MODEM_DEV" > "$ESIM_DIR/modem-device"
+}
+
+# --- Send AT command ---
+send_at() {
+    local CMD="$1"
+    local TIMEOUT="${2:-5}"
+
+    case "$MODEM_TYPE" in
+        at)
+            echo -e "$CMD\r" > "$MODEM_DEV"
+            sleep 1
+            cat "$MODEM_DEV" 2>/dev/null
+            ;;
+        qmi|mbim)
+            # Use service call for Qualcomm
+            service call phone 27 s16 "$CMD" 2>/dev/null
+            ;;
+        android)
+            # Use Android's content provider / service calls
+            service call isms 7 i32 0 s16 "unused" s16 "$CMD" 2>/dev/null
+            ;;
+    esac
+}
+
+# --- Query SIM status ---
+query_sim_status() {
+    log "Querying SIM/eSIM status..."
+
+    # Android property-based detection
+    SIM_STATE=$(getprop gsm.sim.state 2>/dev/null || echo "UNKNOWN")
+    SIM_OPERATOR=$(getprop gsm.sim.operator.alpha 2>/dev/null)
+    SIM_MCC_MNC=$(getprop gsm.sim.operator.numeric 2>/dev/null)
+    SIM_ICCID=$(getprop gsm.sim.operator.iso-country 2>/dev/null)
+    PHONE_NUMBER=$(getprop gsm.sim.operator.alpha 2>/dev/null)
+
+    # Try dumpsys for more detail
+    SIM_INFO=$(dumpsys isub 2>/dev/null)
+    EUICC_INFO=$(dumpsys euicc 2>/dev/null)
+
+    # Detect eSIM capability
+    HAS_EUICC="false"
+    if echo "$EUICC_INFO" | grep -qi "euicc\|esim\|lpa" 2>/dev/null; then
+        HAS_EUICC="true"
+    fi
+
+    # Check for embedded UICC
+    if [ -d /sys/class/misc/uicc* ] || getprop persist.vendor.radio.esim 2>/dev/null | grep -qi "true"; then
+        HAS_EUICC="true"
+    fi
+
+    # Multi-SIM detection
+    SIM_COUNT=$(getprop gsm.sim.count 2>/dev/null || echo "1")
+    SIM2_STATE=$(getprop gsm.sim.state2 2>/dev/null || echo "ABSENT")
+
+    cat > "$ESIM_DIR/sim-status.json" << EOF
+{
+    "sim_state": "$SIM_STATE",
+    "sim2_state": "$SIM2_STATE",
+    "sim_count": "$SIM_COUNT",
+    "operator": "$SIM_OPERATOR",
+    "mcc_mnc": "$SIM_MCC_MNC",
+    "has_euicc": $HAS_EUICC,
+    "modem_type": "$MODEM_TYPE",
+    "modem_device": "$MODEM_DEV",
+    "updated": "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+}
+EOF
+
+    log "SIM: $SIM_STATE operator:$SIM_OPERATOR eSIM:$HAS_EUICC"
+}
+
+# --- Request eSIM profile from DarCloud ---
+request_esim_profile() {
+    log "Requesting eSIM profile from DarCloud API..."
+
+    # Get device info for provisioning
+    IMEI=$(getprop persist.radio.imei 2>/dev/null || \
+           dumpsys iphonesubinfo 2>/dev/null | grep "Device ID" | awk '{print $NF}' || \
+           service call iphonesubinfo 1 2>/dev/null | grep -oP "'[0-9]+'" | tr -d "'" | head -c 15)
+    MODEL=$(getprop ro.product.model 2>/dev/null)
+    ANDROID_VER=$(getprop ro.build.version.release 2>/dev/null)
+    EID=$(dumpsys euicc 2>/dev/null | grep -o "eid=[A-Fa-f0-9]*" | head -1 | cut -d= -f2)
+
+    PUBKEY=$(cat "$WG_DIR/publickey" 2>/dev/null)
+
+    RESPONSE=$(curl -sf --connect-timeout 15 \
+        -X POST \
+        -H "Content-Type: application/json" \
+        -d "{
+            \"node_name\": \"$NODE_NAME\",
+            \"imei\": \"$IMEI\",
+            \"model\": \"$MODEL\",
+            \"android_version\": \"$ANDROID_VER\",
+            \"eid\": \"$EID\",
+            \"wireguard_pubkey\": \"$PUBKEY\",
+            \"capabilities\": [\"esim\", \"5g\", \"volte\", \"vowifi\", \"mms\"],
+            \"request_type\": \"esim_provision\"
+        }" \
+        "$DARCLOUD_API/telecom/esim/provision" 2>/dev/null)
+
+    if [ -n "$RESPONSE" ]; then
+        echo "$RESPONSE" > "$ESIM_DIR/profile-response.json"
+
+        # Extract activation code
+        ACTIVATION_CODE=$(echo "$RESPONSE" | grep -o '"activation_code":"[^"]*"' | cut -d'"' -f4)
+        ICCID=$(echo "$RESPONSE" | grep -o '"iccid":"[^"]*"' | cut -d'"' -f4)
+        IMSI=$(echo "$RESPONSE" | grep -o '"imsi":"[^"]*"' | cut -d'"' -f4)
+
+        if [ -n "$ACTIVATION_CODE" ]; then
+            echo "$ACTIVATION_CODE" > "$ESIM_DIR/activation-code"
+            echo "$ICCID" > "$ESIM_DIR/iccid"
+            echo "$IMSI" > "$ESIM_DIR/imsi"
+            log "eSIM profile received: ICCID=$ICCID IMSI=$IMSI"
+            return 0
+        fi
+    fi
+
+    log "WARNING: Could not obtain eSIM profile from API"
+    return 1
+}
+
+# --- Download and activate eSIM profile via LPA ---
+activate_esim_profile() {
+    ACTIVATION_CODE=$(cat "$ESIM_DIR/activation-code" 2>/dev/null)
+    if [ -z "$ACTIVATION_CODE" ]; then
+        log "No activation code available"
+        return 1
+    fi
+
+    log "Activating eSIM profile: $ACTIVATION_CODE"
+
+    # Method 1: Android EuiccManager via am (Activity Manager)
+    am broadcast \
+        -a android.telephony.euicc.action.PROVISION_EMBEDDED_SUBSCRIPTION \
+        --es "android.telephony.euicc.extra.EMBEDDED_SUBSCRIPTION_ACTIVATION_CODE" "$ACTIVATION_CODE" \
+        -n com.android.phone/.euicc.EuiccReceiver \
+        2>/dev/null
+
+    # Method 2: LPA direct command (Samsung LPA)
+    if [ -x /system/bin/lpa_util ] || [ -x /vendor/bin/lpa_util ]; then
+        LPA_BIN=$(which lpa_util 2>/dev/null || echo "/system/bin/lpa_util")
+        "$LPA_BIN" download "$ACTIVATION_CODE" 2>/dev/null
+        log "LPA utility download initiated"
+    fi
+
+    # Method 3: Content provider (works on most Android 10+)
+    content call --uri content://com.android.providers.telephony.HbpcdLookupProvider \
+        --method download_subscription \
+        --extra activation_code:s:"$ACTIVATION_CODE" 2>/dev/null
+
+    # Method 4: AT command to eUICC (for devices with AT interface)
+    if [ "$MODEM_TYPE" = "at" ]; then
+        # ES10b.LoadBoundProfilePackage — download profile
+        send_at "AT+CSIM=58,\"80E2910000\"" 5
+        sleep 2
+        # Enable profile
+        ICCID=$(cat "$ESIM_DIR/iccid" 2>/dev/null)
+        if [ -n "$ICCID" ]; then
+            send_at "AT+CCHO=\"A0000005591010FFFFFFFF8900000100\"" 3
+            sleep 1
+            send_at "AT+CGLA=1,38,\"80E10100\"" 3
+        fi
+    fi
+
+    log "eSIM activation commands sent"
+    return 0
+}
+
+# --- Configure APN for DarTelecom ---
+configure_apn() {
+    log "Configuring DarTelecom APN..."
+
+    # Insert DarTelecom APN via content provider
+    content insert --uri content://telephony/carriers \
+        --bind name:s:"DarTelecom 5G" \
+        --bind numeric:s:"99970" \
+        --bind mcc:s:"999" \
+        --bind mnc:s:"70" \
+        --bind apn:s:"$ESIM_APN" \
+        --bind type:s:"default,supl,mms,ims,ia" \
+        --bind mmsc:s:"$MMS_MMSC" \
+        --bind mmsproxy:s:"$MMS_PROXY" \
+        --bind mmsport:s:"$MMS_PORT" \
+        --bind protocol:s:"IPV4V6" \
+        --bind roaming_protocol:s:"IPV4V6" \
+        --bind bearer_bitmask:s:"20" \
+        --bind network_type_bitmask:s:"524288" \
+        --bind mvno_type:s:"" \
+        --bind user_visible:s:"1" \
+        --bind user_editable:s:"1" \
+        2>/dev/null
+
+    # Set as preferred APN
+    APN_ID=$(content query --uri content://telephony/carriers \
+        --where "apn='$ESIM_APN'" --projection _id 2>/dev/null | \
+        grep -o "_id=[0-9]*" | head -1 | cut -d= -f2)
+
+    if [ -n "$APN_ID" ]; then
+        content insert --uri content://telephony/carriers/preferapn \
+            --bind apn_id:s:"$APN_ID" 2>/dev/null
+        log "DarTelecom APN set as preferred (ID: $APN_ID)"
+    fi
+
+    # Also set via properties for RIL
+    setprop persist.data.apn "$ESIM_APN"
+    setprop persist.data.apn.protocol "IPV4V6"
+    setprop persist.radio.apn "$ESIM_APN"
+
+    log "APN configured: $ESIM_APN"
+}
+
+# --- Enable VoLTE/VoWiFi ---
+enable_volte_vowifi() {
+    log "Enabling VoLTE and VoWiFi..."
+
+    # Samsung-specific IMS settings
+    setprop persist.dbg.volte_avail_ovr 1
+    setprop persist.dbg.vt_avail_ovr 1
+    setprop persist.dbg.wfc_avail_ovr 1
+    setprop persist.vendor.radio.vdp_on_ims_cap 1
+    setprop persist.vendor.radio.is_vonr_enabled_0 1
+    setprop persist.vendor.radio.is_vonr_enabled_1 1
+
+    # Enable IMS registration
+    setprop persist.vendor.radio.calls.on.ims 1
+    setprop persist.radio.calls.on.ims 1
+
+    # WiFi Calling
+    setprop persist.data.iwlan.enable true
+    setprop persist.vendor.data.iwlan.enable true
+
+    # 5G NR settings
+    setprop persist.vendor.radio.5g_mode_pref 1
+    setprop persist.radio.is_wfc_enabled true
+    setprop persist.sys.cust.lte_config 1
+
+    # Enable HD voice
+    setprop persist.vendor.radio.hd.voice 1
+    setprop persist.radio.hd.voice 1
+
+    log "VoLTE/VoWiFi/VoNR enabled"
+}
+
+# --- Monitor eSIM status ---
+monitor_esim() {
+    while true; do
+        # Refresh SIM status
+        SIM_STATE=$(getprop gsm.sim.state 2>/dev/null)
+        DATA_STATE=$(getprop gsm.network.type 2>/dev/null)
+        SIGNAL=$(dumpsys telephony.registry 2>/dev/null | \
+            grep -o "mSignalStrength=[0-9-]*" | head -1 | cut -d= -f2)
+        IMS_REG=$(dumpsys telephony.registry 2>/dev/null | \
+            grep -o "mImsRegistered=[a-z]*" | head -1 | cut -d= -f2)
+        DATA_CONNECTED=$(getprop gsm.defaultpdpcontext.active 2>/dev/null)
+
+        # Data usage tracking
+        RX_MB=0
+        TX_MB=0
+        for iface in rmnet_data0 rmnet_data1 wlan0; do
+            if [ -f "/sys/class/net/$iface/statistics/rx_bytes" ]; then
+                RX=$(cat "/sys/class/net/$iface/statistics/rx_bytes")
+                TX=$(cat "/sys/class/net/$iface/statistics/tx_bytes")
+                RX_MB=$((RX_MB + RX / 1048576))
+                TX_MB=$((TX_MB + TX / 1048576))
+            fi
+        done
+
+        cat > "$ESIM_DIR/esim-status.json" << EOF
+{
+    "sim_state": "$SIM_STATE",
+    "network_type": "$DATA_STATE",
+    "signal_dbm": "$SIGNAL",
+    "ims_registered": "$IMS_REG",
+    "data_connected": "$DATA_CONNECTED",
+    "data_rx_mb": $RX_MB,
+    "data_tx_mb": $TX_MB,
+    "iccid": "$(cat "$ESIM_DIR/iccid" 2>/dev/null)",
+    "imsi": "$(cat "$ESIM_DIR/imsi" 2>/dev/null)",
+    "volte_enabled": "$(getprop persist.dbg.volte_avail_ovr 2>/dev/null)",
+    "vowifi_enabled": "$(getprop persist.data.iwlan.enable 2>/dev/null)",
+    "updated": "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+}
+EOF
+
+        # Report to API
+        curl -sf --connect-timeout 10 \
+            -X POST \
+            -H "Content-Type: application/json" \
+            -d "@$ESIM_DIR/esim-status.json" \
+            "$DARCLOUD_API/telecom/esim/status" > /dev/null 2>&1
+
+        sleep "$HEARTBEAT_INTERVAL"
+    done
+}
+
+# --- Health API ---
+start_esim_health() {
+    ESIM_HEALTH_PORT=8083
+
+    while true; do
+        STATUS=$(cat "$ESIM_DIR/esim-status.json" 2>/dev/null || echo '{"status":"initializing"}')
+        RESPONSE="HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n$STATUS"
+        echo -e "$RESPONSE" | toybox nc -l -p "$ESIM_HEALTH_PORT" -w 5 2>/dev/null
+    done &
+
+    echo $! > "$PID_DIR/esim-health.pid"
+    log "eSIM health API on :$ESIM_HEALTH_PORT"
+}
+
+# --- Main ---
+detect_modem
+query_sim_status
+start_esim_health
+
+# Check if eSIM profile exists or needs provisioning
+if [ ! -f "$ESIM_DIR/imsi" ]; then
+    log "No eSIM profile — requesting from DarCloud..."
+    if request_esim_profile; then
+        activate_esim_profile
+        sleep 10
+        configure_apn
+        enable_volte_vowifi
+    fi
+else
+    log "eSIM profile exists: IMSI=$(cat "$ESIM_DIR/imsi")"
+    configure_apn
+    enable_volte_vowifi
+fi
+
+log "eSIM service initialized — entering monitor loop"
+
+# Monitor loop
+monitor_esim

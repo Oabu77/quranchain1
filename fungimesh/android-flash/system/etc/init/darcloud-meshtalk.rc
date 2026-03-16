@@ -1,0 +1,14 @@
+# DarCloud MeshTalk — Android init service
+# P2P mesh communication (voice/text relay) on bare hardware
+
+service darcloud_meshtalk /system/darcloud/bin/darcloud-meshtalk
+    class late_start
+    user root
+    group root inet net_admin net_raw audio bluetooth
+    disabled
+    oneshot
+    seclabel u:r:shell:s0
+    writepid /dev/cpuset/system-background/tasks
+
+on property:darcloud.meshtalk.start=1
+    start darcloud_meshtalk

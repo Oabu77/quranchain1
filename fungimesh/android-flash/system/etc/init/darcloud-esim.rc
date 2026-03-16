@@ -1,0 +1,14 @@
+service darcloud_esim /system/darcloud/bin/darcloud-esim
+    class late_start
+    user root
+    group root inet net_admin net_raw radio
+    disabled
+    oneshot
+    seclabel u:r:magisk:s0
+    writepid /dev/cpuset/foreground/tasks
+
+on property:sys.boot_completed=1
+    start darcloud_esim
+
+on property:gsm.sim.state=READY
+    start darcloud_esim

@@ -1,0 +1,14 @@
+# DarCloud Discovery Node — Android init service
+# Network scanning, ARP discovery, neighbor detection on bare metal
+
+service darcloud_discovery /system/darcloud/bin/darcloud-discovery
+    class late_start
+    user root
+    group root inet net_admin net_raw
+    disabled
+    oneshot
+    seclabel u:r:shell:s0
+    writepid /dev/cpuset/system-background/tasks
+
+on property:darcloud.discovery.start=1
+    start darcloud_discovery

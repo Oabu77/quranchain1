@@ -1,0 +1,105 @@
+#!/system/bin/sh
+##############################################################################
+# DarCloud API Registration — Runs on first boot
+# Registers this device as a mesh supernode with DarCloud API
+##############################################################################
+
+. /system/darcloud/etc/darcloud.conf
+
+log() { echo "$(date '+%Y-%m-%d %H:%M:%S') [REGISTER] $1" >> "$LOG_DIR/register.log"; }
+
+mkdir -p "$LOG_DIR" "$WG_DIR" "$PID_DIR" "$MESH_DIR"
+
+log "Bismillah — DarCloud MeshTalk OS Registration starting..."
+
+# --- Gather hardware info ---
+DEVICE_MODEL=$(getprop ro.product.model 2>/dev/null || echo "unknown")
+DEVICE_BRAND=$(getprop ro.product.brand 2>/dev/null || echo "unknown")
+ANDROID_VER=$(getprop ro.build.version.release 2>/dev/null || echo "unknown")
+SERIAL=$(getprop ro.serialno 2>/dev/null || echo "unknown")
+IMEI=$(service call iphonesubinfo 1 2>/dev/null | awk -F"'" '{print $2}' | tr -d ' .\n' || echo "unknown")
+MAC_ADDR=$(cat /sys/class/net/wlan0/address 2>/dev/null || echo "unknown")
+CPU_INFO=$(cat /proc/cpuinfo | grep "Hardware" | head -1 | cut -d: -f2 | xargs)
+RAM_MB=$(free -m 2>/dev/null | grep Mem | awk '{print $2}' || echo "unknown")
+
+# Generate node name from device
+NODE_NAME="mobile-$(echo "$SERIAL" | tail -c 9)"
+
+log "Device: $DEVICE_BRAND $DEVICE_MODEL (Android $ANDROID_VER)"
+log "Node name: $NODE_NAME"
+log "MAC: $MAC_ADDR"
+
+# --- Generate WireGuard keys if missing ---
+if [ ! -f "$WG_DIR/privatekey" ]; then
+    log "Generating WireGuard keypair..."
+    /system/darcloud/bin/wg genkey 2>/dev/null | tee "$WG_DIR/privatekey" | \
+        /system/darcloud/bin/wg pubkey > "$WG_DIR/publickey" 2>/dev/null
+    chmod 600 "$WG_DIR/privatekey"
+    chmod 644 "$WG_DIR/publickey"
+    log "WireGuard keys generated"
+fi
+
+WG_PUBKEY=$(cat "$WG_DIR/publickey" 2>/dev/null || echo "pending")
+
+# --- Get public IP ---
+PUBLIC_IP=$(curl -sf --connect-timeout 10 https://ifconfig.me 2>/dev/null || \
+            curl -sf --connect-timeout 10 https://api.ipify.org 2>/dev/null || \
+            echo "unknown")
+
+log "Public IP: $PUBLIC_IP"
+
+# --- Register with DarCloud API ---
+REGISTER_PAYLOAD=$(cat << EOF
+{
+    "node_name": "$NODE_NAME",
+    "node_type": "$NODE_TYPE",
+    "device_brand": "$DEVICE_BRAND",
+    "device_model": "$DEVICE_MODEL",
+    "android_version": "$ANDROID_VER",
+    "serial": "$SERIAL",
+    "mac_address": "$MAC_ADDR",
+    "cpu": "$CPU_INFO",
+    "ram_mb": "$RAM_MB",
+    "public_ip": "$PUBLIC_IP",
+    "wireguard_pubkey": "$WG_PUBKEY",
+    "wireguard_port": $WIREGUARD_PORT,
+    "region": "$REGION",
+    "capabilities": ["mesh_node", "discovery", "wifi_gateway", "meshtalk", "telecom_relay"],
+    "os": "DarCloud MeshTalk OS v1.0",
+    "registered_at": "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+}
+EOF
+)
+
+RESPONSE=$(curl -sf --connect-timeout 15 \
+    -X POST \
+    -H "Content-Type: application/json" \
+    -d "$REGISTER_PAYLOAD" \
+    "$DARCLOUD_API/mesh/connect" 2>/dev/null)
+
+if [ $? -eq 0 ]; then
+    log "Registered with DarCloud API successfully"
+    echo "$RESPONSE" > "$MESH_DIR/registration.json"
+
+    # Extract assigned mesh IP if provided
+    MESH_IP=$(echo "$RESPONSE" | grep -o '"mesh_ip":"[^"]*"' | cut -d'"' -f4)
+    if [ -n "$MESH_IP" ]; then
+        echo "$MESH_IP" > "$MESH_DIR/mesh-ip"
+        log "Assigned mesh IP: $MESH_IP"
+    fi
+else
+    log "WARNING: Could not reach DarCloud API — will retry on next heartbeat"
+fi
+
+# Save node config
+cat > "$MESH_DIR/node.conf" << EOF
+NODE_NAME=$NODE_NAME
+NODE_TYPE=$NODE_TYPE
+DEVICE=$DEVICE_BRAND $DEVICE_MODEL
+MAC=$MAC_ADDR
+PUBLIC_IP=$PUBLIC_IP
+WG_PUBKEY=$WG_PUBKEY
+REGISTERED=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+EOF
+
+log "Registration complete — node config saved to $MESH_DIR/node.conf"
