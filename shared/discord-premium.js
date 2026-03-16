@@ -9,7 +9,6 @@ const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("
 // ── SKU Configuration ───────────────────────────────────
 // After creating SKUs in Discord Developer Portal, set these env vars
 const SKUS = {
-  STARTER: process.env.DISCORD_SKU_STARTER || "",
   PRO: process.env.DISCORD_SKU_PRO || "",
   EMPIRE: process.env.DISCORD_SKU_EMPIRE || "",
 };
@@ -37,34 +36,11 @@ const TIERS = {
       prioritySupport: false,
     },
   },
-  starter: {
-    name: "DarCloud Starter",
-    level: 1,
-    emoji: "⚡",
-    price: "$4.99/mo",
-    color: 0x2ecc71,
-    features: [
-      "20 AI questions/day (GPT-4o)",
-      "Basic NFT gallery access",
-      "Standard dashboards",
-      "Community channels",
-      "Email support",
-    ],
-    limits: {
-      aiAsks: 20,
-      nftMints: 5,
-      nftTrades: 10,
-      deployAccess: false,
-      founderAccess: false,
-      premiumDashboard: false,
-      prioritySupport: false,
-    },
-  },
   pro: {
     name: "DarCloud Pro",
-    level: 2,
+    level: 1,
     emoji: "⭐",
-    price: "$9.99/mo",
+    price: "$4.99/mo",
     color: 0x3498db,
     features: [
       "Unlimited AI questions (GPT-4o)",
@@ -87,9 +63,9 @@ const TIERS = {
   },
   empire: {
     name: "DarCloud Empire",
-    level: 3,
+    level: 2,
     emoji: "👑",
-    price: "$29.99/mo",
+    price: "$14.99/mo",
     color: 0xf1c40f,
     features: [
       "Everything in Pro",
@@ -146,17 +122,14 @@ function getUserTier(interaction) {
     return "free";
   }
 
-  // Check tiers from highest to lowest priority
+  // Check for Empire tier first (higher priority)
   if (SKUS.EMPIRE && interaction.entitlements.some(e => e.skuId === SKUS.EMPIRE && isEntitlementActive(e))) {
     return "empire";
   }
 
+  // Check for Pro tier
   if (SKUS.PRO && interaction.entitlements.some(e => e.skuId === SKUS.PRO && isEntitlementActive(e))) {
     return "pro";
-  }
-
-  if (SKUS.STARTER && interaction.entitlements.some(e => e.skuId === SKUS.STARTER && isEntitlementActive(e))) {
-    return "starter";
   }
 
   return "free";
@@ -214,7 +187,7 @@ function checkUsageLimit(interaction, type) {
   }
 
   if (current >= limit) {
-    const upsellTier = userTier === "free" ? "starter" : userTier === "starter" ? "pro" : "empire";
+    const upsellTier = userTier === "free" ? "pro" : "empire";
     return {
       allowed: false,
       tier: userTier,
@@ -255,9 +228,9 @@ function createUpsellEmbed(result, commandName) {
   // Premium subscription button — Discord handles the purchase flow
   const row = new ActionRowBuilder();
 
-  if (SKUS.PRO || SKUS.EMPIRE || SKUS.STARTER) {
+  if (SKUS.PRO || SKUS.EMPIRE) {
     // If SKUs are configured, use Discord's premium button
-    const skuId = result.upsellTier === "empire" ? SKUS.EMPIRE : result.upsellTier === "pro" ? SKUS.PRO : SKUS.STARTER;
+    const skuId = result.upsellTier === "empire" ? SKUS.EMPIRE : SKUS.PRO;
     if (skuId) {
       row.addComponents(
         new ButtonBuilder()
@@ -302,11 +275,6 @@ function createComparisonEmbed() {
         inline: true,
       },
       {
-        name: `${TIERS.starter.emoji} ${TIERS.starter.name}`,
-        value: TIERS.starter.features.map(f => `• ${f}`).join("\n") + `\n**Price: ${TIERS.starter.price}**`,
-        inline: true,
-      },
-      {
         name: `${TIERS.pro.emoji} ${TIERS.pro.name}`,
         value: TIERS.pro.features.map(f => `• ${f}`).join("\n") + `\n**Price: ${TIERS.pro.price}**`,
         inline: true,
@@ -317,12 +285,7 @@ function createComparisonEmbed() {
         inline: true,
       }
     )
-    .setFooSTARTER) {
-    row.addComponents(
-      new ButtonBuilder().setStyle(ButtonStyle.Premium).setSKUId(SKUS.STARTER)
-    );
-  }
-  if (SKUS.ter({ text: "DarCloud Premium • Discord handles all payments securely" })
+    .setFooter({ text: "DarCloud Premium • Discord handles all payments securely" })
     .setTimestamp();
 
   const row = new ActionRowBuilder();
@@ -371,7 +334,7 @@ function createPremiumStatusEmbed(interaction) {
         name: "Today's Usage",
         value: [
           `🤖 AI Questions: ${usage.aiAsks}/${tierInfo.limits.aiAsks === Infinity ? "∞" : tierInfo.limits.aiAsks}`,
-          `🎨 NFT Mints: ${usage.nftMintstarter" : tier === "starter" ? "s}/${tierInfo.limits.nftMints === Infinity ? "∞" : tierInfo.limits.nftMints}`,
+          `🎨 NFT Mints: ${usage.nftMints}/${tierInfo.limits.nftMints === Infinity ? "∞" : tierInfo.limits.nftMints}`,
         ].join("\n"),
         inline: true,
       }
@@ -440,17 +403,17 @@ const PREMIUM_COMMANDS = {
   "subscribe": "free",    // Always accessible
 };
 
-// Qu200 Starter + 100 Pro + 20 Empire": {
-      monthly: (200 * 4.99 * 0.85) + (100 * 9.99 * 0.85) + (20 * 29.99 * 0.85),
-      annual: ((200 * 4.99 * 0.85) + (100 * 9.99 * 0.85) + (20 * 29.99 * 0.85)) * 12,
-    },
-    "500 Starter + 250 Pro + 50 Empire": {
-      monthly: (500 * 4.99 * 0.85) + (250 * 9.99 * 0.85) + (50 * 29.99 * 0.85),
-      annual: ((500 * 4.99 * 0.85) + (250 * 9.99 * 0.85) + (50 * 29.99 * 0.85)) * 12,
-    },
-    "1000 Starter + 500 Pro + 100 Empire": {
-      monthly: (1000 * 4.99 * 0.85) + (500 * 9.99 * 0.85) + (100 * 29.99 * 0.85),
-      annual: ((1000 * 4.99 * 0.85) + (500 * 9.99 * 0.85) + (100 * 29
+// Quick access function — returns required tier for a command
+function getRequiredTier(commandName) {
+  return PREMIUM_COMMANDS[commandName] || "free";
+}
+
+// ── Premium Revenue Projections ─────────────────────────
+const REVENUE_PROJECTIONS = {
+  // Discord takes 15% for Premium Apps (first 2 years), 30% after
+  discordCut: 0.15,
+  projections: {
+    "100 Pro + 20 Empire": {
       monthly: (100 * 4.99 * 0.85) + (20 * 14.99 * 0.85),
       annual: ((100 * 4.99 * 0.85) + (20 * 14.99 * 0.85)) * 12,
     },
@@ -458,29 +421,12 @@ const PREMIUM_COMMANDS = {
       monthly: (500 * 4.99 * 0.85) + (100 * 14.99 * 0.85),
       annual: ((500 * 4.99 * 0.85) + (100 * 14.99 * 0.85)) * 12,
     },
-    "1000starter_subscription",
-    name: "DarCloud Starter",
-    emoji: "⚡",
-    price: "$4.99/mo",
-    color: 0x2ecc71,
-    tier: "starter",
-    description: "Get started with DarCloud AI — 20 questions/day, dashboards, community",
-    features: [
-      "20 GPT-4o AI questions/day",
-      "Basic NFT gallery access",
-      "Standard dashboards",
-      "Community channels",
-      "Email support",
-    ],
-    popular: false,
+    "1000 Pro + 250 Empire": {
+      monthly: (1000 * 4.99 * 0.85) + (250 * 14.99 * 0.85),
+      annual: ((1000 * 4.99 * 0.85) + (250 * 14.99 * 0.85)) * 12,
+    },
   },
-  {
-    id: "pro_subscription",
-    name: "DarCloud Pro",
-    emoji: "⭐",
-    price: "$9
-  },
-};29
+};
 
 // ── SHOP PRODUCTS — Full Store Catalog ──────────────────
 const SHOP_PRODUCTS = [
@@ -502,7 +448,7 @@ const SHOP_PRODUCTS = [
       "Advanced data exports",
     ],
     popular: true,
-  },4
+  },
   {
     id: "empire_subscription",
     name: "DarCloud Empire",
@@ -519,7 +465,7 @@ const SHOP_PRODUCTS = [
       "GPT-4o Turbo model access",
       "Revenue dashboard & analytics",
       "White-label bot access",
-      "Full A14.PI access (all endpoints)",
+      "Full API access (all endpoints)",
       "Early access to new features",
       "Direct founder support channel",
     ],
@@ -537,7 +483,7 @@ const SHOP_PRODUCTS = [
       "Dedicated mesh relay node",
       "Earn QRN validator rewards",
       "Layer 2 Python mesh access",
-      "E2E en29.rypted communications",
+      "E2E encrypted communications",
       "Network governance voting",
     ],
     popular: false,
@@ -594,33 +540,27 @@ function createShopEmbed(interaction) {
       `Welcome to the DarCloud Empire Store!\n` +
       `Your current plan: ${tierInfo.emoji} **${tierInfo.name}**\n\n` +
       `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
-      `💎 *STARTER) {
-    row1.addComponents(new ButtonBuilder().setStyle(ButtonStyle.Premium).setSKUId(SKUS.STARTER));
-  } else {
-    row1.addComponents(
-      new ButtonBuilder().setCustomId("shop_buy_starter").setLabel("⚡ Get Starter — $4.99/mo").setStyle(ButtonStyle.Secondary)
-    );
-  }
-  if (SKUS.PRO) {
-    row1.addComponents(new ButtonBuilder().setStyle(ButtonStyle.Premium).setSKUId(SKUS.PRO));
-  } else {
-    row1.addComponents(
-      new ButtonBuilder().setCustomId("shop_buy_pro").setLabel("⭐ Get Pro — $9.99/mo").setStyle(ButtonStyle.Primary)
-    );
-  }
-  if (SKUS.EMPIRE) {
-    row1.addComponents(new ButtonBuilder().setStyle(ButtonStyle.Premium).setSKUId(SKUS.EMPIRE));
-  } else {
-    row1.addComponents(
-      new ButtonBuilder().setCustomId("shop_buy_empire").setLabel("👑 Get Empire — $29.99/mo").setStyle(ButtonStyle.Success)
-    );
-  }
-  rows.push(row1);
+      `💎 **Premium Subscriptions** — Upgrade your experience\n` +
+      `🍄 **Add-ons** — Expand your empire\n` +
+      `🏢 **Enterprise** — Full white-label deployment\n` +
+      `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n` +
+      `All payments handled securely by Discord.\n` +
+      `Revenue split: 30% Founder · 40% AI Validators · 10% Hardware · 18% Ecosystem · 2% Zakat ☪️`
+    )
+    .setFooter({ text: "DarCloud Empire™ — Powered by Discord Premium Apps" })
+    .setTimestamp();
 
-  // Row 2: Add-ons (Stripe checkout links)
-  const row2 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId("shop_buy_fungimesh").setLabel("🍄 FungiMesh Node — $4.99/mo").setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId("shop_buy_hwc").setLabel("🏦 HWC Premium — $14.99/mo").setStyle(ButtonStyle.Secondary
+  const productEmbeds = SHOP_PRODUCTS.map(product => {
+    const embed = new EmbedBuilder()
+      .setTitle(`${product.emoji} ${product.name}${product.popular ? " — ⚡ MOST POPULAR" : ""}`)
+      .setColor(product.color)
+      .setDescription(
+        `*${product.description}*\n\n` +
+        `**Price:** ${product.price}\n\n` +
+        product.features.map(f => `✅ ${f}`).join("\n")
+      );
+    return embed;
+  });
 
   // Build action rows with subscribe buttons
   const rows = [];
@@ -635,8 +575,7 @@ function createShopEmbed(interaction) {
     );
   }
   if (SKUS.EMPIRE) {
-    row1.addCstarter: "starter",
-    shop_buy_omponents(new ButtonBuilder().setStyle(ButtonStyle.Premium).setSKUId(SKUS.EMPIRE));
+    row1.addComponents(new ButtonBuilder().setStyle(ButtonStyle.Premium).setSKUId(SKUS.EMPIRE));
   } else {
     row1.addComponents(
       new ButtonBuilder().setCustomId("shop_buy_empire").setLabel("👑 Get Empire — $14.99/mo").setStyle(ButtonStyle.Success)
