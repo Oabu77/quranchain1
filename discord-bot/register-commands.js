@@ -313,6 +313,22 @@ const commands = [
     .addStringOption((opt) => opt.setName("task").setDescription("Task to execute (natural language)").setRequired(true)),
   new SlashCommandBuilder().setName("premium").setDescription("⭐ View your DarCloud Premium status & upgrade"),
   new SlashCommandBuilder().setName("shop").setDescription("🛒 DarCloud Shop — browse & buy premium subscriptions"),
+
+  // ── QuranChain Command Protocol ──
+  new SlashCommandBuilder()
+    .setName("protocol")
+    .setDescription("🧠 QuranChain Command Protocol — unified 101-agent AI command system")
+    .addStringOption((opt) => opt.setName("command").setDescription("Command (e.g. 'show system status', 'list blockchain nodes', 'restart api')").setRequired(true)),
+  new SlashCommandBuilder()
+    .setName("protocol-help")
+    .setDescription("📖 Command Protocol help — verbs, domains, authority levels"),
+  new SlashCommandBuilder()
+    .setName("protocol-audit")
+    .setDescription("📋 View command protocol audit trail")
+    .addIntegerOption((opt) => opt.setName("count").setDescription("Number of entries (default 20, max 50)").setRequired(false)),
+  new SlashCommandBuilder()
+    .setName("protocol-domains")
+    .setDescription("🌐 View all protocol domain → bot routing map"),
 ].map((cmd) => cmd.toJSON());
 
 const rest = new REST().setToken(DISCORD_TOKEN);

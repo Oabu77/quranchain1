@@ -20,6 +20,8 @@ const { MeshRouter } = require("../shared/mesh-router");
 const openaiAgents = require("../shared/openai-agents");
 const founderAgent = require("../shared/founder-agent");
 const discordPremium = require("../shared/discord-premium");
+const commandProtocol = require("../shared/command-protocol");
+const agentRouter = require("../shared/agent-router");
 
 // ── Mesh Router (this bot = mesh relay node) ────────────────
 const meshRouter = new MeshRouter("darcloud");
@@ -65,8 +67,9 @@ let apiOnline = true;
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent,
   ],
-  // Discord.js handles reconnection internally, but we add extra resilience
 });
 
 // ── API Helper ──────────────────────────────────────────────
@@ -1397,7 +1400,125 @@ const handlers = {
     }
     await interaction.editReply({ embeds: [embed] });
   },
+
+  // ─── QuranChain Command Protocol ──────────
+  async protocol(interaction) {
+    const command = interaction.options.getString("command");
+    const userId = interaction.user.id;
+    const roles = interaction.member?.roles?.cache;
+
+    const response = await commandProtocol.processCommand(
+      "Hello QuranChain " + command,
+      userId,
+      roles
+    );
+
+    if (!response.protocol) {
+      return interaction.editReply({ content: "❌ Command not recognized by protocol." });
+    }
+
+    const embedData = commandProtocol.toEmbed(response);
+    const embed = new EmbedBuilder()
+      .setTitle(embedData.title)
+      .setColor(embedData.color)
+      .setDescription(embedData.description)
+      .setTimestamp()
+      .setFooter({ text: "QuranChain™ Command Protocol v1.0" });
+
+    for (const field of embedData.fields) {
+      embed.addFields({ name: field.name, value: String(field.value || "—").slice(0, 1024), inline: field.inline || false });
+    }
+
+    return interaction.editReply({ embeds: [embed] });
+  },
+
+  "protocol-help": async (interaction) => {
+    const help = commandProtocol.getHelp();
+    const embed = darEmbed(help.title)
+      .setColor(0x8b5cf6)
+      .setDescription(
+        `**Wake Phrases:** ${help.wakePhrases}\n\n` +
+        `**Example Commands:**\n\`\`\`\n${help.example}\n\`\`\`\n\n` +
+        `**Modes:** ${help.modes}\n\n` +
+        `**Priorities:** ${help.priorities}`
+      )
+      .addFields(
+        { name: "📝 Command Verbs", value: help.verbs },
+        { name: "🌐 Domains", value: help.domains },
+        { name: "🔐 Authority Levels", value: help.authorities }
+      );
+    return interaction.editReply({ embeds: [embed] });
+  },
+
+  "protocol-audit": async (interaction) => {
+    const count = interaction.options.getInteger("count") || 20;
+    const auditEntries = commandProtocol.getAuditLog(Math.min(count, 50));
+    const embed = darEmbed("📋 Protocol Audit Log")
+      .setColor(0x6366f1);
+
+    if (auditEntries.length > 0) {
+      const lines = auditEntries.map(e =>
+        `\`${e.timestamp?.slice(11, 19) || "?"}\` ${e.type === "BLOCKED" ? "🚫" : "✅"} **${e.verb || e.command || "?"}** → ${e.domain || "?"} (${e.level || e.authority || "?"})`
+      ).join("\n");
+      embed.setDescription(lines);
+    } else {
+      embed.setDescription("No audit entries yet.");
+    }
+    embed.addFields({ name: "Total Entries", value: String(auditEntries.length), inline: true });
+    return interaction.editReply({ embeds: [embed] });
+  },
+
+  "protocol-domains": async (interaction) => {
+    const domains = agentRouter.listDomains();
+    const embed = darEmbed("🌐 Protocol Domain Map")
+      .setColor(0x8b5cf6);
+
+    const list = domains.map(d =>
+      `**${d.label}** → \`${d.bot}\` — Agents: ${d.agents}`
+    ).join("\n");
+    embed.setDescription(list);
+    embed.addFields({ name: "Total Domains", value: String(domains.length), inline: true });
+    return interaction.editReply({ embeds: [embed] });
+  },
 };
+
+// ── Message Handler — Wake Phrase Detection ─────────────────
+client.on("messageCreate", async (message) => {
+  if (message.author.bot) return;
+
+  const wake = commandProtocol.detectWake(message.content);
+  if (!wake.matched) return;
+
+  log("INFO", `Protocol wake detected from ${message.author.tag}: ${message.content.slice(0, 100)}`);
+
+  try {
+    const roles = message.member?.roles?.cache;
+    const response = await commandProtocol.processCommand(
+      message.content,
+      message.author.id,
+      roles
+    );
+
+    if (!response.protocol) return;
+
+    const embedData = commandProtocol.toEmbed(response);
+    const embed = new EmbedBuilder()
+      .setTitle(embedData.title)
+      .setColor(embedData.color)
+      .setDescription(embedData.description)
+      .setTimestamp()
+      .setFooter({ text: "QuranChain™ Command Protocol v1.0" });
+
+    for (const field of embedData.fields) {
+      embed.addFields({ name: field.name, value: String(field.value || "—").slice(0, 1024), inline: field.inline || false });
+    }
+
+    await message.reply({ embeds: [embed] });
+  } catch (err) {
+    log("ERROR", `Protocol message error: ${err.message}`);
+    await message.reply({ content: `❌ Protocol error: ${err.message}` }).catch(() => {});
+  }
+});
 
 // ── guildMemberAdd — Auto-Onboarding ────────────────────────
 client.on("guildMemberAdd", async (member) => {

@@ -35,12 +35,13 @@ const masjidFinder = require("../shared/masjid-finder");
 const { MeshRouter } = require("../shared/mesh-router");
 const openaiAgents = require("../shared/openai-agents");
 const discordPremium = require("../shared/discord-premium");
+const commandProtocol = require("../shared/command-protocol");
 const meshRouter = new MeshRouter("quranchain");
 const smartContracts = require("./smart-contracts");
 
 // ── Discord Client ────────────────────────────────────────
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds],
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent],
 });
 
 // ── Logging ───────────────────────────────────────────────
@@ -810,6 +811,34 @@ const handlers = {
 };
 
 // ── Interaction Handler ───────────────────────────────────
+
+// ── Message Handler — Wake Phrase Detection ───────────────
+client.on("messageCreate", async (message) => {
+  if (message.author.bot) return;
+  const wake = commandProtocol.detectWake(message.content);
+  if (!wake.matched) return;
+
+  try {
+    const roles = message.member?.roles?.cache;
+    const response = await commandProtocol.processCommand(message.content, message.author.id, roles);
+    if (!response.protocol) return;
+
+    const embedData = commandProtocol.toEmbed(response);
+    const embed = new EmbedBuilder()
+      .setTitle(embedData.title)
+      .setColor(embedData.color)
+      .setDescription(embedData.description)
+      .setTimestamp()
+      .setFooter({ text: "QuranChain™ Command Protocol v1.0" });
+    for (const field of embedData.fields) {
+      embed.addFields({ name: field.name, value: String(field.value || "—").slice(0, 1024), inline: field.inline || false });
+    }
+    await message.reply({ embeds: [embed] });
+  } catch (err) {
+    log("ERROR", `Protocol error: ${err.message}`);
+  }
+});
+
 client.on("interactionCreate", async (interaction) => {
   // Premium button handler
   if (interaction.isButton() && interaction.customId === "premium_compare") {

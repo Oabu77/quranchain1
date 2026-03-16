@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DarCloud Blog — Islamic Tech, Blockchain, AI & Halal Economy</title>
+<meta name="description" content="Articles on Islamic finance, blockchain, AI, mesh networking, cybersecurity, and building the $2.7T halal economy. By the DarCloud team.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>☁️</text></svg>">
+<style>
+:root{--bg:#07090f;--s1:#0d1117;--s2:#161b22;--bdr:#21262d;--cyan:#00d4ff;--emerald:#10b981;--gold:#f59e0b;--purple:#8b5cf6;--txt:#e6edf3;--muted:#8b949e}
+*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--txt)}
+a{color:var(--cyan);text-decoration:none}a:hover{text-decoration:underline}
+nav{position:sticky;top:0;z-index:100;background:rgba(7,9,15,.92);backdrop-filter:blur(12px);border-bottom:1px solid var(--bdr);padding:.75rem 2rem;display:flex;justify-content:space-between;align-items:center}
+.logo{font-size:1.3rem;font-weight:700;background:linear-gradient(135deg,#00d4ff,#10b981);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.nav-links{display:flex;gap:1.5rem;font-size:.85rem;align-items:center}.nav-links a{color:var(--muted)}.nav-links a:hover{color:var(--cyan)}
+.btn{display:inline-block;padding:.5rem 1.2rem;border-radius:8px;font-weight:600;font-size:.85rem;transition:all .3s;border:none;cursor:pointer}
+.btn-primary{background:linear-gradient(135deg,#00d4ff,#10b981);color:#000}
+article{max-width:800px;margin:0 auto;padding:3rem 1.5rem}
+.breadcrumb{font-size:.8rem;color:var(--muted);margin-bottom:1.5rem}
+.breadcrumb a{color:var(--muted)}.breadcrumb a:hover{color:var(--cyan)}
+article h1{font-size:clamp(1.8rem,4vw,2.8rem);font-weight:800;line-height:1.15;margin-bottom:1rem}
+.meta{display:flex;gap:1rem;align-items:center;color:var(--muted);font-size:.85rem;margin-bottom:2rem;flex-wrap:wrap}
+.meta .cat{padding:.2rem .6rem;border-radius:4px;font-size:.75rem;font-weight:600;color:#000}
+.toc{background:var(--s1);border:1px solid var(--bdr);border-radius:12px;padding:1.5rem 2rem;margin-bottom:2rem}
+.toc h4{font-size:.9rem;margin-bottom:.75rem;color:var(--txt)}.toc ol{padding-left:1.2rem}.toc li{margin-bottom:.4rem}
+.toc a{color:var(--muted);font-size:.85rem}.toc a:hover{color:var(--cyan)}
+article h2{font-size:1.6rem;font-weight:700;margin:2.5rem 0 1rem;padding-top:1rem;border-top:1px solid var(--bdr)}
+article h3{font-size:1.2rem;font-weight:600;margin:1.5rem 0 .75rem}
+article p{color:var(--muted);font-size:1.05rem;line-height:1.8;margin-bottom:1.5rem}
+article ul,article ol{color:var(--muted);font-size:1rem;line-height:1.8;margin-bottom:1.5rem;padding-left:1.5rem}
+article li{margin-bottom:.5rem}
+article blockquote{border-left:3px solid var(--gold);padding:1rem 1.5rem;margin:1.5rem 0;background:var(--s1);border-radius:0 8px 8px 0;color:var(--muted);font-style:italic}
+article code{background:var(--s2);padding:.15rem .4rem;border-radius:4px;font-size:.9rem;font-family:'Courier New',monospace}
+article pre{background:var(--s2);border:1px solid var(--bdr);border-radius:8px;padding:1.5rem;overflow-x:auto;margin-bottom:1.5rem;font-size:.85rem;line-height:1.5}
+article img{max-width:100%;border-radius:12px;border:1px solid var(--bdr);margin:1.5rem 0}
+.video-embed{margin:2rem 0;border-radius:12px;overflow:hidden;border:1px solid var(--bdr)}
+.video-embed .placeholder{width:100%;aspect-ratio:16/9;background:linear-gradient(135deg,var(--s1),var(--s2));display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.75rem;cursor:pointer}
+.video-embed .play{width:64px;height:64px;border-radius:50%;background:linear-gradient(135deg,#00d4ff,#10b981);display:flex;align-items:center;justify-content:center;font-size:1.5rem;box-shadow:0 0 30px rgba(0,212,255,.2);transition:transform .3s}
+.video-embed .play:hover{transform:scale(1.1)}
+.cta-box{background:var(--s1);border:1px solid var(--bdr);border-radius:14px;padding:2rem;text-align:center;margin:2.5rem 0}
+.cta-box h3{font-size:1.2rem;margin-bottom:.5rem}.cta-box p{color:var(--muted);margin-bottom:1rem;font-size:.9rem}
+.share{display:flex;gap:.75rem;margin:2rem 0;flex-wrap:wrap}
+.share a{padding:.4rem 1rem;border:1px solid var(--bdr);border-radius:6px;font-size:.8rem;color:var(--muted);transition:all .2s}
+.share a:hover{border-color:var(--cyan);color:var(--cyan);text-decoration:none}
+.related{margin:3rem 0}
+.related h3{font-size:1.3rem;margin-bottom:1.5rem}
+.related-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:1rem}
+.related-card{background:var(--s1);border:1px solid var(--bdr);border-radius:10px;padding:1.5rem;transition:all .2s}
+.related-card:hover{border-color:var(--cyan);transform:translateY(-2px);text-decoration:none}
+.related-card h4{font-size:.95rem;margin-bottom:.3rem;color:var(--txt)}.related-card p{color:var(--muted);font-size:.8rem}
+.ad-unit{background:var(--s1);border:1px solid var(--bdr);border-radius:10px;padding:1.5rem;text-align:center;margin:2rem 0;min-height:90px;display:flex;align-items:center;justify-content:center}
+.ad-unit .ad-label{color:var(--muted);font-size:.7rem;text-transform:uppercase;letter-spacing:.1em}
+footer{padding:2rem;border-top:1px solid var(--bdr);text-align:center;margin-top:3rem}
+.footer-links{display:flex;justify-content:center;gap:1.5rem;flex-wrap:wrap;margin-bottom:1rem}.footer-links a{color:var(--muted);font-size:.8rem}
+@media(max-width:768px){.nav-links{display:none}article{padding:2rem 1rem}article h1{font-size:1.8rem}.related-grid{grid-template-columns:1fr}}
+</style>
+<style>
+.blog-hero{text-align:center;padding:4rem 1.5rem 2rem}
+.blog-hero h1{font-size:2.5rem;font-weight:800;margin-bottom:1rem}
+.blog-hero h1 span{background:linear-gradient(135deg,#00d4ff,#10b981);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.blog-hero p{color:var(--muted);font-size:1.1rem;max-width:600px;margin:0 auto}
+.categories{display:flex;flex-wrap:wrap;gap:.75rem;justify-content:center;padding:2rem 1.5rem;max-width:1000px;margin:0 auto}
+.cat-card{display:flex;flex-direction:column;align-items:center;gap:.3rem;padding:1rem 1.5rem;background:var(--s1);border:1px solid var(--bdr);border-radius:10px;transition:all .2s;text-decoration:none}
+.cat-card:hover{transform:translateY(-2px);border-color:var(--cyan)}
+.cat-icon{font-size:1.5rem}.cat-name{font-size:.85rem;font-weight:600;color:var(--txt)}.cat-count{font-size:.7rem;color:var(--muted)}
+.posts-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:1.5rem;max-width:1200px;margin:0 auto;padding:2rem 1.5rem}
+.post-card{background:var(--s1);border:1px solid var(--bdr);border-radius:12px;padding:1.5rem;transition:all .2s;text-decoration:none;display:block}
+.post-card:hover{border-color:var(--cyan);transform:translateY(-2px)}
+.post-card .post-cat{display:inline-block;padding:.15rem .5rem;border-radius:4px;font-size:.7rem;font-weight:600;color:#000;margin-bottom:.75rem}
+.post-card h3{font-size:1rem;font-weight:600;color:var(--txt);margin-bottom:.4rem;line-height:1.3}
+.post-card p{color:var(--muted);font-size:.8rem;line-height:1.5}
+.total-stat{text-align:center;padding:1rem;color:var(--muted);font-size:.9rem}
+</style>
+</head><body>
+<nav>
+  <a class="logo" href="https://darcloud.host">☁️ DarCloud Blog</a>
+  <div class="nav-links">
+    <a href="https://darcloud.host">Home</a>
+    <a href="https://darcloud.host/blog">Blog</a>
+    <a href="https://investors.darcloud.host">Investors</a>
+    <a href="https://demo.darcloud.host">Demo</a>
+    <a href="https://darcloud.host/checkout/pro" class="btn btn-primary">Start Free</a>
+  </div>
+</nav>
+
+<div class="blog-hero">
+  <h1>The <span>DarCloud</span> Blog</h1>
+  <p>Deep dives into Islamic finance, blockchain, AI, mesh networking, and building the $2.7 trillion halal economy.</p>
+</div>
+
+<p class="total-stat">📝 2240 articles across 112 categories</p>
+
+<div class="categories">
+  <a class="cat-card" href="/blog/category/islamic-finance" style="border-color:#f59e0b20">
+        <span class="cat-icon">💰</span>
+        <span class="cat-name">Islamic Finance</span>
+        <span class="cat-count">20 articles</span>
+      </a>
+      <a class="cat-card" href="/blog/category/blockchain-technology" style="border-color:#10b98120">
+        <span class="cat-icon">⛓️</span>
+        <span class="cat-name">Blockchain Technology</span>
+        <span class="cat-count">20 articles</span>
+      </a>
+      <a class="cat-card" href="/blog/category/mesh-networking" style="border-color:#00d4ff20">
+        <span class="cat-icon">🍄</span>
+        <span class="cat-name">Mesh Networking</span>
+        <span class="cat-count">20 articles</span>
+      </a>
+      <a class="cat-card" href="/blog/category/ai-artificial-intelligence" style="border-color:#8b5cf620">
+        <span class="cat-icon">🤖</span>
+        <span class="cat-name">Artificial Intelligence</span>
+        <span class="cat-count">20 articles</span>
+      </a>
+      <a class="cat-card" href="/blog/category/halal-lifestyle" style="border-color:#e11d4820">
+        <span class="cat-icon">🌙</span>
+        <span class="cat-name">Halal Lifestyle</span>
+        <span class="cat-count">20 articles</span>
+      </a>
+      <a class="cat-card" href="/blog/category/cybersecurity" style="border-color:#ef444420">
+        <span class="cat-icon">🛡️</span>
+        <span class="cat-name">Cybersecurity</span>
+        <span class="cat-count">20 articles</span>
+      </a>
+      <a class="cat-card" href="/blog/category/cloud-computing" style="border-color:#06b6d420">
+        <span class="cat-icon">☁️</span>
+        <span class="cat-name">Cloud Computing</span>
+        <span class="cat-count">20 articles</span>
+      </a>
+      <a class="cat-card" href="/blog/category/discord-bots" style="border-color:#5865F220">
+        <span class="cat-icon">🎮</span>
+        <span class="cat-name">Discord Bots</span>
+        <span class="cat-count">20 articles</span>
+      </a>
+      <a class="cat-card" href="/blog/category/startup-entrepreneurship" style="border-color:#f9731620">
+        <span class="cat-icon">🚀</span>
+        <span class="cat-name">Startup & Entrepreneurship</span>
+        <span class="cat-count">20 articles</span>
+      </a>
+      <a class="cat-card" href="/blog/category/web-development" style="border-color:#22d3ee20">
+        <span class="cat-icon">💻</span>
+        <span class="cat-name">Web Development</span>
+        <span class="cat-count">20 articles</span>
+      </a>
+      <a class="cat-card" href="/blog/category/sports-world" style="border-color:#16a34a20">
+        <span class="cat-icon">🏆</span>
+        <span class="cat-name">Sports World</span>
+        <span class="cat-count">20 articles</span>
+      </a>
+      <a class="cat-card" href="/blog/category/science-discovery" style="border-color:#3b82f620">
+        <span class="cat-icon">🔬</span>
+        <span class="cat-name">Science & Discovery</span>
+        <span class="cat-count">20 articles</span>
+      </a>
+      <a class="cat-card" href="/blog/category/breaking-news" style="border-color:#ef444420">
+        <span class="cat-icon">🔴</span>
+        <span class="cat-name">Breaking News</span>
+        <span class="cat-count">20 articles</span>
+      </a>
+      <a class="cat-card" href="/blog/category/health-medicine" style="border-color:#22c55e20">
+        <span class="cat-icon">🏥</span>
+        <span class="cat-name">Health & Medicine</span>
+        <span class="cat-count">20 articles</span>
+      </a>
+</div>
+
+<h2 style="text-align:center;margin:2rem 0 0;font-size:1.5rem">Latest Articles</h2>
+<div class="posts-grid">
+  <a class="post-card" href="/blog/what-is-riba-and-why-islam-forbids-interest">
+        <div class="post-cat" style="background:#f59e0b">💰 Islamic Finance</div>
+        <h3>What is Riba and Why Islam Forbids Interest</h3>
+        <p>Understanding the Islamic prohibition on interest-based transactions and modern halal alternatives....</p>
+      </a>
+      <a class="post-card" href="/blog/murabaha-explained-cost-plus-financing-in-islam">
+        <div class="post-cat" style="background:#f59e0b">💰 Islamic Finance</div>
+        <h3>Murabaha Explained: Cost-Plus Financing in Islam</h3>
+        <p>How murabaha contracts work as a Shariah-compliant alternative to conventional loans....</p>
+      </a>
+      <a class="post-card" href="/blog/sukuk-vs-bonds-the-islamic-investment-alternative">
+        <div class="post-cat" style="background:#f59e0b">💰 Islamic Finance</div>
+        <h3>Sukuk vs Bonds: The Islamic Investment Alternative</h3>
+        <p>Understanding Islamic bonds (sukuk) and how they differ from conventional fixed-income securities....</p>
+      </a>
+      <a class="post-card" href="/blog/islamic-banking-how-banks-operate-without-interest">
+        <div class="post-cat" style="background:#f59e0b">💰 Islamic Finance</div>
+        <h3>Islamic Banking: How Banks Operate Without Interest</h3>
+        <p>A complete guide to how Islamic banks generate revenue without charging riba....</p>
+      </a>
+      <a class="post-card" href="/blog/musharakah-profit-sharing-partnerships-in-islam">
+        <div class="post-cat" style="background:#f59e0b">💰 Islamic Finance</div>
+        <h3>Musharakah: Profit-Sharing Partnerships in Islam</h3>
+        <p>How musharakah contracts enable fair business partnerships under Islamic law....</p>
+      </a>
+      <a class="post-card" href="/blog/takaful-vs-insurance-islamic-risk-management">
+        <div class="post-cat" style="background:#f59e0b">💰 Islamic Finance</div>
+        <h3>Takaful vs Insurance: Islamic Risk Management</h3>
+        <p>Understanding cooperative insurance models that comply with Shariah principles....</p>
+      </a>
+      <a class="post-card" href="/blog/waqf-the-islamic-endowment-system-explained">
+        <div class="post-cat" style="background:#f59e0b">💰 Islamic Finance</div>
+        <h3>Waqf: The Islamic Endowment System Explained</h3>
+        <p>How waqf foundations have funded Islamic civilization for centuries....</p>
+      </a>
+      <a class="post-card" href="/blog/zakat-calculator-how-to-calculate-your-obligation">
+        <div class="post-cat" style="background:#f59e0b">💰 Islamic Finance</div>
+        <h3>Zakat Calculator: How to Calculate Your Obligation</h3>
+        <p>Step-by-step guide to calculating zakat on different asset types....</p>
+      </a>
+      <a class="post-card" href="/blog/halal-investing-a-beginners-guide-to-ethical-portfolios">
+        <div class="post-cat" style="background:#f59e0b">💰 Islamic Finance</div>
+        <h3>Halal Investing: A Beginners Guide to Ethical Portfolios</h3>
+        <p>How to build an investment portfolio that complies with Islamic principles....</p>
+      </a>
+      <a class="post-card" href="/blog/the-2-7-trillion-halal-economy-explained">
+        <div class="post-cat" style="background:#f59e0b">💰 Islamic Finance</div>
+        <h3>The $2.7 Trillion Halal Economy Explained</h3>
+        <p>Market size, growth trends, and opportunities in the global halal economy....</p>
+      </a>
+      <a class="post-card" href="/blog/islamic-microfinance-banking-the-unbanked-ummah">
+        <div class="post-cat" style="background:#f59e0b">💰 Islamic Finance</div>
+        <h3>Islamic Microfinance: Banking the Unbanked Ummah</h3>
+        <p>How Islamic microfinance institutions serve communities traditional banks ignore....</p>
+      </a>
+      <a class="post-card" href="/blog/cryptocurrency-and-islam-a-scholarly-analysis">
+        <div class="post-cat" style="background:#f59e0b">💰 Islamic Finance</div>
+        <h3>Cryptocurrency and Islam: A Scholarly Analysis</h3>
+        <p>What Islamic scholars say about Bitcoin, Ethereum, and digital currencies....</p>
+      </a>
+</div>
+
+<div style="text-align:center;padding:3rem">
+  <a class="btn btn-primary" href="https://darcloud.host/checkout/pro" style="font-size:1rem;padding:.75rem 2rem">Start Building on DarCloud →</a>
+</div>
+
+<footer>
+  <div class="footer-links">
+    <a href="https://darcloud.host">DarCloud</a>
+    <a href="https://investors.darcloud.host">Investors</a>
+    <a href="https://about.darcloud.host">About</a>
+    <a href="https://discord.gg/darcloud">Discord</a>
+  </div>
+  <p style="color:var(--muted);font-size:.8rem">© 2026 DarCloud Empire. All rights reserved.</p>
+</footer>
+</body></html>

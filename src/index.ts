@@ -27,6 +27,7 @@ import {
   checkoutResultPage,
 } from "./pages";
 import { handleSubdomain } from "./subdomainRouter";
+import { blogRouter } from "./blogRouter";
 
 // Start a Hono app
 const app = new Hono<{ Bindings: Env }>();
@@ -79,6 +80,58 @@ app.get("/checkout/cancel", (c) => c.html(checkoutResultPage("cancel")));
 app.get("/checkout/:plan", (c) => c.html(checkoutPage(c.req.param("plan"))));
 app.get("/privacy", (c) => c.html(PRIVACY_PAGE));
 app.get("/privacy-policy", (c) => c.html(PRIVACY_PAGE));
+
+// ── Blog routes (500+ SEO articles) ──
+app.route("/blog", blogRouter);
+
+// ── Robots.txt (SEO) ──
+app.get("/robots.txt", (c) => {
+  return c.text(`User-agent: *
+Allow: /
+Sitemap: https://darcloud.host/blog/sitemap.xml
+Sitemap: https://blog.darcloud.host/sitemap.xml
+`);
+});
+
+// ── Analytics Pageview Endpoint (monetization tracking) ──
+app.get("/api/analytics/pageview", async (c) => {
+  const page = c.req.query("p") || "/";
+  const referrer = c.req.query("r") || "";
+  const ts = c.req.query("t") || String(Date.now());
+  const ip = c.req.header("cf-connecting-ip") || "unknown";
+  const ua = c.req.header("user-agent") || "";
+  const country = c.req.header("cf-ipcountry") || "";
+  try {
+    await c.env.DB.prepare(
+      `INSERT INTO analytics_pageviews (page, referrer, ip_hash, user_agent, country, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)`
+    ).bind(page, referrer.substring(0, 500), ip.substring(0, 64), ua.substring(0, 256), country, new Date(parseInt(ts) || Date.now()).toISOString()).run();
+  } catch (_) {
+    // Best-effort — don't break the pixel
+  }
+  return new Response("", { status: 204, headers: { "Cache-Control": "no-store" } });
+});
+
+// ── Lead Capture Endpoint (email signup for monetization) ──
+app.post("/api/leads/subscribe", async (c) => {
+  try {
+    const body = await c.req.json();
+    const email = (body.email || "").trim().toLowerCase();
+    const source = (body.source || "blog").substring(0, 50);
+    const page = (body.page || "/").substring(0, 200);
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return c.json({ error: "Valid email required" }, 400);
+    }
+    const leadId = crypto.randomUUID();
+    await c.env.DB.prepare(
+      `INSERT OR IGNORE INTO leads (lead_id, email, source, page, created_at)
+       VALUES (?, ?, ?, ?, datetime('now'))`
+    ).bind(leadId, email, source, page).run();
+    return c.json({ success: true, message: "Subscribed successfully" });
+  } catch (e: any) {
+    return c.json({ error: "Subscription failed" }, 500);
+  }
+});
 
 // ── Auth & Checkout API ──
 app.route("/api", auth);

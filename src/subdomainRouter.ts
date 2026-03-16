@@ -30,6 +30,13 @@ import netPage from "../landing-pages/darcloud-net.js";
 import omaraiPage from "../landing-pages/darcloud-omarai.js";
 import realEstatePage from "../landing-pages/darcloud-realestate.js";
 import revenuePage from "../landing-pages/darcloud-revenue.js";
+import investorsPage from "../landing-pages/darcloud-investors.js";
+import demoPage from "../landing-pages/darcloud-demo.js";
+import aboutPage from "../landing-pages/darcloud-about.js";
+import partnersPage from "../landing-pages/darcloud-partners.js";
+import gamingPage from "../landing-pages/darcloud-gaming.js";
+import quranchainPage from "../landing-pages/darcloud-quranchain.js";
+import { blogSubdomainPage } from "./blogRouter";
 
 type LandingPage = { fetch(request: Request): Promise<Response> };
 
@@ -110,6 +117,17 @@ const SUBDOMAIN_MAP: Record<string, LandingPage> = {
   media: mediaPage,
   defi: defiPage,
   omarai: omaraiPage,
+
+  // Media-rich pages
+  investors: investorsPage,
+  demo: demoPage,
+  about: aboutPage,
+  partners: partnersPage,
+  gaming: gamingPage,
+  quranchain: quranchainPage,
+
+  // Blog
+  blog: blogSubdomainPage,
 };
 
 // darcloud.net apex gets its own page
