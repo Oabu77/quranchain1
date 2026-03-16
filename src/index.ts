@@ -9,6 +9,7 @@ import { multipassRouter } from "./endpoints/multipass/router";
 import { telecomRouter } from "./endpoints/telecom/router";
 import { wifiRouter } from "./endpoints/wifi/router";
 import { ispRouter } from "./endpoints/isp/router";
+import { mediaRouter } from "./endpoints/media/router";
 import { auth, requireAuth } from "./endpoints/auth";
 import { contracts } from "./endpoints/contracts";
 import { subscriptions } from "./endpoints/subscriptions";
@@ -637,6 +638,9 @@ openapi.route("/wifi", wifiRouter);
 
 // ISP routes (Home, Business, Cellular, Devices, Firmware, Coverage)
 openapi.route("/isp", ispRouter);
+
+// DarMedia™ routes (Broadcast, Streaming, Podcasts, News, Uploads)
+app.route("/media", mediaRouter);
 
 // System health check — replaces the old dummy endpoint
 openapi.get("/health", SystemHealth);
