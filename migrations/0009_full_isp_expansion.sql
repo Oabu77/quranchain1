@@ -115,7 +115,18 @@ CREATE TABLE IF NOT EXISTS isp_service_areas (
 );
 
 -- ═══ Expanded ISP Plans (Home, Business, Cellular) ═══
--- Note: isp_plans table exists from 0007, insert seed data
+CREATE TABLE IF NOT EXISTS isp_plans (
+    plan_id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    speed_mbps INTEGER DEFAULT 0,
+    data_cap_gb REAL DEFAULT -1,
+    monthly_price REAL NOT NULL DEFAULT 0,
+    type TEXT NOT NULL DEFAULT 'home',
+    features TEXT DEFAULT '{}',
+    status TEXT DEFAULT 'active',
+    created_at TEXT DEFAULT (datetime('now'))
+);
+
 INSERT OR IGNORE INTO isp_plans (plan_id, name, speed_mbps, data_cap_gb, monthly_price, type, features, status) VALUES
     ('home_basic', 'Home Basic Internet', 50, 500, 29.99, 'home', '{"wifi":"included","router":"basic","support":"email"}', 'active'),
     ('home_plus', 'Home Plus Internet', 200, 1500, 49.99, 'home', '{"wifi":"mesh_2_nodes","router":"mesh","support":"phone","smart_home":"basic"}', 'active'),

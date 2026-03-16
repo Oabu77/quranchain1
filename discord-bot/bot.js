@@ -74,8 +74,9 @@ let botToken = null;
 
 async function ensureBotToken() {
   if (botToken) return botToken;
-  const email = "darcloud-bot@darcloud.net";
-  const password = "DarCloudBot!2025#Secure";
+  const email = process.env.BOT_API_EMAIL || "darcloud-bot@darcloud.net";
+  const password = process.env.BOT_API_PASSWORD;
+  if (!password) { console.error("BOT_API_PASSWORD not set in .env"); return null; }
   const name = "DarCloud Bot";
   // Try login first, then signup
   try {

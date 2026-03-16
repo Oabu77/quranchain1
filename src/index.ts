@@ -9,7 +9,7 @@ import { multipassRouter } from "./endpoints/multipass/router";
 import { telecomRouter } from "./endpoints/telecom/router";
 import { wifiRouter } from "./endpoints/wifi/router";
 import { ispRouter } from "./endpoints/isp/router";
-import { auth } from "./endpoints/auth";
+import { auth, requireAuth } from "./endpoints/auth";
 import { contracts } from "./endpoints/contracts";
 import { ContentfulStatusCode } from "hono/utils/http-status";
 import { SystemHealth } from "./endpoints/systemHealth";
@@ -88,8 +88,15 @@ app.post("/api/stripe/webhook", async (c) => {
     const signature = c.req.header("stripe-signature") || "";
     const webhookSecret = c.env.STRIPE_WEBHOOK_SECRET;
 
-    // Verify webhook signature if secret is configured
-    if (webhookSecret && signature) {
+    // Verify webhook signature — REQUIRED in production
+    if (!webhookSecret) {
+      console.error("[Stripe Webhook] STRIPE_WEBHOOK_SECRET not configured");
+      return c.json({ error: "Webhook verification not configured" }, 500);
+    }
+    if (!signature) {
+      return c.json({ error: "Missing stripe-signature header" }, 400);
+    }
+    {
       const parts = signature.split(",").reduce((acc: Record<string, string>, part: string) => {
         const [key, val] = part.split("=");
         acc[key] = val;
@@ -120,7 +127,7 @@ app.post("/api/stripe/webhook", async (c) => {
     }
 
     const event = JSON.parse(body);
-    console.log(`[Stripe Webhook] Event: ${event.type} (verified: ${!!webhookSecret})`);
+    console.log(`[Stripe Webhook] Event: ${event.type} (verified: true)`);
 
     // Store webhook event in D1 for processing by bots
     try {
@@ -155,38 +162,47 @@ app.post("/api/stripe/webhook", async (c) => {
         const net = splits.founder + splits.validators + splits.hardware + splits.ecosystem + splits.zakat;
         const period = new Date().toISOString().slice(0, 7);
 
-        // Record in revenue ledger (immutable audit trail)
+        // Record in revenue ledger + update treasury atomically via D1 batch
         try {
-          await db.prepare(
-            `INSERT INTO revenue_ledger (payment_id, stripe_session_id, discord_id, product, gross_amount, founder_amount, validators_amount, hardware_amount, ecosystem_amount, zakat_amount, discord_cut, net_amount, source, status, period)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'stripe', 'confirmed', ?)`
-          ).bind(
-            session.payment_intent || session.id, session.id, discordId, product,
-            amount, splits.founder, splits.validators, splits.hardware, splits.ecosystem, splits.zakat,
-            amount - net, net, period
-          ).run();
+          const statements = [
+            db.prepare(
+              `INSERT INTO revenue_ledger (payment_id, stripe_session_id, discord_id, product, gross_amount, founder_amount, validators_amount, hardware_amount, ecosystem_amount, zakat_amount, discord_cut, net_amount, source, status, period)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'stripe', 'confirmed', ?)`
+            ).bind(
+              session.payment_intent || session.id, session.id, discordId, product,
+              amount, splits.founder, splits.validators, splits.hardware, splits.ecosystem, splits.zakat,
+              amount - net, net, period
+            ),
+          ];
 
           // Update treasury account balances
           const accounts = ["founder", "validators", "hardware", "ecosystem", "zakat"] as const;
           for (const acct of accounts) {
-            await db.prepare(
-              `UPDATE treasury_accounts SET balance_cents = balance_cents + ?, total_received_cents = total_received_cents + ?, updated_at = datetime('now') WHERE account_type = ?`
-            ).bind(splits[acct], splits[acct], acct).run();
-          }
-
-          // Update user plan if it's a subscription product
-          if (product === "pro" || product === "enterprise") {
-            await db.prepare(
-              `UPDATE users SET plan = ?, updated_at = datetime('now') WHERE email LIKE ?`
-            ).bind(product, `%${discordId}%`).run().catch(() => {});
+            statements.push(
+              db.prepare(
+                `UPDATE treasury_accounts SET balance_cents = balance_cents + ?, total_received_cents = total_received_cents + ?, updated_at = datetime('now') WHERE account_type = ?`
+              ).bind(splits[acct], splits[acct], acct)
+            );
           }
 
           // Track subscription
           if (session.subscription) {
+            statements.push(
+              db.prepare(
+                `INSERT OR REPLACE INTO active_subscriptions (discord_id, stripe_subscription_id, stripe_customer_id, product, plan, amount_cents, status, current_period_start)
+                 VALUES (?, ?, ?, ?, ?, ?, 'active', datetime('now'))`
+              ).bind(discordId, session.subscription, session.customer || "", product, product, amount)
+            );
+          }
+
+          // Execute ALL writes atomically
+          await db.batch(statements);
+
+          // Update user plan separately (non-critical, uses discord_id as lookup)
+          if (product === "pro" || product === "enterprise") {
             await db.prepare(
-              `INSERT OR REPLACE INTO active_subscriptions (discord_id, stripe_subscription_id, stripe_customer_id, product, plan, amount_cents, status, current_period_start)
-               VALUES (?, ?, ?, ?, ?, ?, 'active', datetime('now'))`
-            ).bind(discordId, session.subscription, session.customer || "", product, product, amount).run();
+              `UPDATE users SET plan = ?, updated_at = datetime('now') WHERE email = ?`
+            ).bind(product, discordId).run().catch(() => {});
           }
 
           console.log(`[Stripe] ✅ Revenue recorded: $${(amount / 100).toFixed(2)} | ${product} | ${discordId} | Ledger + Treasury updated`);
@@ -207,8 +223,8 @@ app.post("/api/stripe/webhook", async (c) => {
             `UPDATE active_subscriptions SET status = ?, updated_at = datetime('now') WHERE stripe_subscription_id = ?`
           ).bind(status, sub.id).run();
           if (status === "cancelled") {
-            await db.prepare(`UPDATE users SET plan = 'starter', updated_at = datetime('now') WHERE email LIKE ?`)
-              .bind(`%${discordId}%`).run().catch(() => {});
+            await db.prepare(`UPDATE users SET plan = 'starter', updated_at = datetime('now') WHERE email = ?`)
+              .bind(discordId).run().catch(() => {});
           }
         } catch (subErr) { console.error("[Stripe] Subscription update error:", subErr); }
       }
@@ -321,8 +337,10 @@ app.post("/api/stripe/portal", async (c) => {
   }
 });
 
-// ── Revenue Dashboard API ──
+// ── Revenue Dashboard API (auth required) ──
 app.get("/api/revenue/dashboard", async (c) => {
+  const authError = await requireAuth(c as any);
+  if (authError) return authError;
   const db = c.env.DB;
   try {
     const totalRow = await db.prepare("SELECT SUM(gross_amount) as total, COUNT(*) as count FROM revenue_ledger WHERE status='confirmed'").first() as any;
@@ -356,6 +374,8 @@ app.get("/api/revenue/dashboard", async (c) => {
 });
 
 app.get("/api/revenue/treasury", async (c) => {
+  const authError = await requireAuth(c as any);
+  if (authError) return authError;
   const db = c.env.DB;
   try {
     const treasury = await db.prepare("SELECT * FROM treasury_accounts ORDER BY account_type").all();
@@ -374,10 +394,12 @@ app.get("/api/revenue/treasury", async (c) => {
 
 // ── Member Onboarding Status API ──
 app.get("/api/onboarding/status/:discordId", async (c) => {
+  const authError = await requireAuth(c as any);
+  if (authError) return authError;
   const discordId = c.req.param("discordId");
   try {
     const db = c.env.DB;
-    const user = await db.prepare("SELECT * FROM users WHERE email LIKE ?").bind(`%${discordId}%`).first();
+    const user = await db.prepare("SELECT * FROM users WHERE email = ?").bind(discordId).first();
     return c.json({
       success: true,
       member: user || null,
