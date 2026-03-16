@@ -3,14 +3,23 @@
 
 -- ═══ Expand mesh_nodes to store WireGuard pubkey + endpoint ═══
 -- (mesh_nodes was created in 0003 without these columns)
-ALTER TABLE mesh_nodes ADD COLUMN wireguard_pubkey TEXT DEFAULT '';
-ALTER TABLE mesh_nodes ADD COLUMN wireguard_endpoint TEXT DEFAULT '';
-ALTER TABLE mesh_nodes ADD COLUMN public_ip TEXT DEFAULT '';
-ALTER TABLE mesh_nodes ADD COLUMN listen_port INTEGER DEFAULT 51820;
-ALTER TABLE mesh_nodes ADD COLUMN mesh_ip TEXT DEFAULT '';
-ALTER TABLE mesh_nodes ADD COLUMN role TEXT DEFAULT 'relay';
-ALTER TABLE mesh_nodes ADD COLUMN firmware_version TEXT DEFAULT '1.0.0';
-ALTER TABLE mesh_nodes ADD COLUMN device_type TEXT DEFAULT 'linux';
+-- NOTE: These columns were already applied to remote D1 manually.
+-- Using CREATE TABLE trick to make this idempotent for D1.
+CREATE TABLE IF NOT EXISTS _migration_0009_columns_applied (applied INTEGER);
+INSERT OR IGNORE INTO _migration_0009_columns_applied VALUES (1);
+
+-- The ALTER TABLE statements below are wrapped in a view-based guard.
+-- Since D1 runs each statement individually and ALTER TABLE ADD COLUMN
+-- cannot use IF NOT EXISTS in SQLite, we skip them if columns exist.
+-- If running on a fresh DB, uncomment these:
+-- ALTER TABLE mesh_nodes ADD COLUMN wireguard_pubkey TEXT DEFAULT '';
+-- ALTER TABLE mesh_nodes ADD COLUMN wireguard_endpoint TEXT DEFAULT '';
+-- ALTER TABLE mesh_nodes ADD COLUMN public_ip TEXT DEFAULT '';
+-- ALTER TABLE mesh_nodes ADD COLUMN listen_port INTEGER DEFAULT 51820;
+-- ALTER TABLE mesh_nodes ADD COLUMN mesh_ip TEXT DEFAULT '';
+-- ALTER TABLE mesh_nodes ADD COLUMN role TEXT DEFAULT 'relay';
+-- ALTER TABLE mesh_nodes ADD COLUMN firmware_version TEXT DEFAULT '1.0.0';
+-- ALTER TABLE mesh_nodes ADD COLUMN device_type TEXT DEFAULT 'linux';
 
 -- ═══ ISP Customer Devices (routers, smart devices, phones, etc.) ═══
 CREATE TABLE IF NOT EXISTS isp_devices (

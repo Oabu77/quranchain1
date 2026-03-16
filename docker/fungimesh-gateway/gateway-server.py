@@ -6,10 +6,11 @@ DarCloud FungiMesh WiFi Gateway Server
 - Heartbeat to DarCloud API
 - Client tracking & bandwidth metering
 """
-import os, sys, json, time, threading, subprocess, socket
+import os, json, time, threading, subprocess, socket
 from http.server import HTTPServer, BaseHTTPRequestHandler
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import urlparse
 import urllib.request
+from typing import Any
 
 NODE_ID = os.environ.get("NODE_NAME", os.environ.get("NODE_ID", "fungi-gw-unknown"))
 API_URL = os.environ.get("DARCLOUD_API", "https://darcloud.host")
@@ -27,8 +28,8 @@ stats = {
     "wifi_clients": 0,
 }
 
-def get_batman_info():
-    info = {"neighbors": [], "originators": [], "gw_mode": "unknown", "version": "unknown"}
+def get_batman_info() -> dict[str, Any]:
+    info: dict[str, Any] = {"neighbors": [], "originators": [], "gw_mode": "unknown", "version": "unknown"}
     try:
         r = subprocess.run(["batctl", "n"], capture_output=True, text=True, timeout=5)
         for line in r.stdout.strip().split("\n")[2:]:
@@ -50,8 +51,8 @@ def get_batman_info():
     except: pass
     return info
 
-def get_wifi_clients():
-    clients = []
+def get_wifi_clients() -> list[dict[str, Any]]:
+    clients: list[dict[str, Any]] = []
     try:
         r = subprocess.run(["hostapd_cli", "all_sta"], capture_output=True, text=True, timeout=5)
         current_mac = None
@@ -66,8 +67,8 @@ def get_wifi_clients():
     stats["wifi_clients"] = len(clients)
     return clients
 
-def get_dhcp_leases():
-    leases = []
+def get_dhcp_leases() -> list[dict[str, str]]:
+    leases: list[dict[str, str]] = []
     try:
         with open("/var/lib/misc/dnsmasq.leases") as f:
             for line in f:
@@ -79,8 +80,8 @@ def get_dhcp_leases():
     stats["clients_connected"] = len(leases)
     return leases
 
-def get_traffic_stats():
-    traffic = {}
+def get_traffic_stats() -> dict[str, dict[str, int]]:
+    traffic: dict[str, dict[str, int]] = {}
     try:
         with open("/proc/net/dev") as f:
             for line in f.readlines()[2:]:
@@ -96,8 +97,8 @@ def get_traffic_stats():
     except: pass
     return traffic
 
-def get_wireguard_peers():
-    peers = []
+def get_wireguard_peers() -> list[dict[str, Any]]:
+    peers: list[dict[str, Any]] = []
     try:
         r = subprocess.run(["wg", "show", "wg-fungi", "dump"], capture_output=True, text=True, timeout=5)
         for line in r.stdout.strip().split("\n")[1:]:
@@ -214,7 +215,7 @@ else{window.location.href='https://darcloud.host/telecom/subscribe?plan='+plan}}
 
 
 class GatewayHandler(BaseHTTPRequestHandler):
-    def log_message(self, format, *args): pass
+    def log_message(self, format: str, *args: Any) -> None: pass
 
     def do_GET(self):
         path = urlparse(self.path).path
@@ -241,7 +242,7 @@ class GatewayHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         path = urlparse(self.path).path
         length = int(self.headers.get("Content-Length", 0))
-        body = json.loads(self.rfile.read(length)) if length > 0 else {}
+        body: dict[str, Any] = json.loads(self.rfile.read(length)) if length > 0 else {}
         if path == "/api/connect":
             client_ip = self.client_address[0]
             try:
@@ -255,7 +256,7 @@ class GatewayHandler(BaseHTTPRequestHandler):
         else:
             self._json({"error": "not found"}, 404)
 
-    def _json(self, data, code=200):
+    def _json(self, data: dict[str, Any], code: int = 200) -> None:
         body = json.dumps(data).encode()
         self.send_response(code)
         self.send_header("Content-Type", "application/json")

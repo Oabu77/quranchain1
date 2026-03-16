@@ -51,21 +51,39 @@ export class CellTowerRegistry extends OpenAPIRoute {
 	public async handle(c: AppContext) {
 		const db = c.env.DB;
 
-		// Query mesh_nodes — towers now register with role=tower and real hardware data
-		const rows = await db
-			.prepare(
-				`SELECT node_id, hostname, ip_address, region, role, capabilities, last_heartbeat, hardware,
-				 listen_port, firmware_version, wireguard_endpoint, device_type,
-				 ROUND((julianday('now') - julianday(created_at)) * 24, 1) as uptime_hours
-				 FROM mesh_nodes
-				 ORDER BY last_heartbeat DESC`
-			)
-			.all<{
-				node_id: string; hostname: string; ip_address: string; region: string;
-				role: string; capabilities: string; last_heartbeat: string; hardware: string;
-				listen_port: number; firmware_version: string; wireguard_endpoint: string;
-				device_type: string; uptime_hours: number;
-			}>();
+		interface MeshNodeRow {
+			node_id: string; hostname: string; ip_address: string; region: string;
+			role: string; capabilities: string; last_heartbeat: string; hardware: string;
+			listen_port: number; firmware_version: string; wireguard_endpoint: string;
+			device_type: string; uptime_hours: number;
+		}
+
+		// Query mesh_nodes — try expanded columns (0009 migration), fall back to base (0003)
+		let rows: { results: MeshNodeRow[] | null };
+		try {
+			rows = await db
+				.prepare(
+					`SELECT node_id, node_id AS hostname, COALESCE(mesh_ip, public_ip, '') AS ip_address,
+					 region, COALESCE(role, 'relay') AS role, '' AS capabilities,
+					 last_heartbeat, hardware,
+					 listen_port, firmware_version, wireguard_endpoint, device_type,
+					 ROUND((julianday('now') - julianday(created_at)) * 24, 1) as uptime_hours
+					 FROM mesh_nodes
+					 ORDER BY last_heartbeat DESC`)
+				.all<MeshNodeRow>();
+		} catch {
+			// Fallback: only use columns from base migration 0003
+			rows = await db
+				.prepare(
+					`SELECT node_id, node_id AS hostname, '' AS ip_address,
+					 region, 'relay' AS role, '' AS capabilities,
+					 last_heartbeat, hardware,
+					 0 AS listen_port, '1.0.0' AS firmware_version, '' AS wireguard_endpoint, 'linux' AS device_type,
+					 ROUND((julianday('now') - julianday(created_at)) * 24, 1) as uptime_hours
+					 FROM mesh_nodes
+					 ORDER BY last_heartbeat DESC`)
+				.all<MeshNodeRow>();
+		}
 
 		// Sector assignments per bot tower
 		const sectorMap: Record<string, { sector: string; band: string; tech: string }> = {
@@ -210,7 +228,7 @@ export class SignalMap extends OpenAPIRoute {
 
 		const rows = await db
 			.prepare(
-				`SELECT node_id, hostname, role, last_heartbeat FROM mesh_nodes ORDER BY node_id`
+				`SELECT node_id, node_id AS hostname, COALESCE(role, 'relay') AS role, last_heartbeat FROM mesh_nodes ORDER BY node_id`
 			)
 			.all<{ node_id: string; hostname: string; role: string; last_heartbeat: string }>();
 

@@ -9,14 +9,22 @@
 
 param(
     [string]$GatewayIP = "192.168.12.1",
-    [string]$AdminPassword = "6G1oc52dsh8h",
+    [string]$AdminPassword = $env:DARCLOUD_GW_PASSWORD,
     [string]$NewSSID24 = "DarCloud-WiFi",
     [string]$NewSSID5 = "DarCloud-WiFi-5G",
-    [string]$NewWifiPassword = "DarCloud2026",
+    [string]$NewWifiPassword = $env:DARCLOUD_WIFI_PASSWORD,
     [string]$NodeName = "tower-tmo-g4ar-01",
     [string]$Region = "us-central",
-    [string]$ApiUrl = "https://darcloud.host"
+    [string]$ApiUrl = "https://darcloud.host",
+    [string]$MacAddress = "F4:3E:B0:20:C4:CC"
 )
+
+if (-not $AdminPassword) {
+    $AdminPassword = Read-Host "Enter gateway admin password"
+}
+if (-not $NewWifiPassword) {
+    $NewWifiPassword = Read-Host "Enter new WiFi password for DarCloud-WiFi"
+}
 
 Write-Host @"
 ═══════════════════════════════════════════════════
@@ -207,7 +215,7 @@ $devicePayload = @{
     device_type = "router"
     manufacturer = "Arcadyan"
     model = "TMO-G4AR"
-    mac_address = "F4:3E:B0:20:C4:CC"
+    mac_address = $MacAddress
     mesh_enabled = $true
     is_mesh_tower = $true
 } | ConvertTo-Json
@@ -260,8 +268,7 @@ Write-Host @"
   DarCloud ISP™ — TMO-G4AR Flash Complete!
 
   Gateway:       TMO-G4AR (Arcadyan 5G)
-  MAC:           F4:3E:B0:20:C4:CC
-  IMEI:          866080070085469
+  MAC:           $MacAddress
   Tower ID:      $NodeName
   Region:        $Region
   Public IP:     $publicIP

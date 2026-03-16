@@ -3,7 +3,9 @@ param(
     [string]$InstallDir = "C:\3proxy",
     [switch]$SetWinHttp,
     [switch]$AllowLAN,
-    [string]$ListenIP = "127.0.0.1"
+    [string]$ListenIP = "127.0.0.1",
+    [string]$ProxyUser = "",
+    [string]$ProxyPass = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -15,6 +17,15 @@ $ZipUrl  = "https://github.com/3proxy/3proxy/releases/download/$Version/3proxy-$
 
 if ($AllowLAN -and $ListenIP -eq "127.0.0.1") {
     $ListenIP = "0.0.0.0"
+}
+
+# Require auth when listening on LAN to prevent open proxy
+if ($AllowLAN -and (-not $ProxyUser -or -not $ProxyPass)) {
+    $ProxyUser = Read-Host "LAN proxy requires auth. Enter proxy username"
+    $ProxyPass = Read-Host "Enter proxy password"
+    if (-not $ProxyUser -or -not $ProxyPass) {
+        throw "Proxy username and password are required when using -AllowLAN to prevent an open proxy."
+    }
 }
 
 $ProxyServer = "http://127.0.0.1:$ProxyPort"
@@ -71,7 +82,20 @@ function Write-Config {
     Ensure-Directory $LogDir
 
     # By default: local-only on 127.0.0.1, no LAN exposure.
-    # If -AllowLAN is used, it listens on 0.0.0.0 and opens Windows Firewall below.
+    # If -AllowLAN is used, require username/password auth so it's not an open proxy.
+    if ($AllowLAN -and $ProxyUser -and $ProxyPass) {
+        $authSection = @"
+users $ProxyUser`:CL:$ProxyPass
+auth strong
+allow $ProxyUser
+"@
+    } else {
+        $authSection = @"
+auth none
+allow *
+"@
+    }
+
     $config = @"
 daemon
 nserver 1.1.1.1
@@ -80,8 +104,7 @@ nscache 65536
 timeouts 1 5 30 60 180 1800 15 60
 log "$LogDir\3proxy.log" D
 rotate 7
-auth none
-allow *
+$authSection
 proxy -p$ProxyPort -i$ListenIP
 flush
 "@

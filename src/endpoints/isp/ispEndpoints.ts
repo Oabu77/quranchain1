@@ -148,24 +148,22 @@ export class IspSubscriberProvision extends OpenAPIRoute {
 		const body = data.body;
 		const db = c.env.DB;
 
-		// Generate IMSI and MSISDN for cellular plans
+		// Generate IMSI for cellular plans
 		const isCellular = body.plan.startsWith("cell_");
-		const imsi = isCellular ? `999700${Date.now().toString().slice(-9)}` : "";
-		const msisdn = isCellular ? `+1${Math.floor(2000000000 + Math.random() * 8000000000)}` : "";
+		const imsi = isCellular ? `999700${Date.now().toString().slice(-9)}` : `sub-${Date.now()}`;
 
 		await db
 			.prepare(
 				`INSERT OR REPLACE INTO telecom_subscribers
-				 (subscriber_id, imsi, msisdn, plan, status, data_usage_mb, monthly_cost, sim_type, created_at)
-				 VALUES (?, ?, ?, ?, 'active', 0, ?, ?, datetime('now'))`,
+				 (subscriber_id, imsi, name, email, plan, status, data_used_mb, created_at)
+				 VALUES (?, ?, ?, ?, ?, 'active', 0, datetime('now'))`,
 			)
 			.bind(
 				body.subscriber_id,
 				imsi,
-				msisdn,
+				body.subscriber_id,
+				"",
 				body.plan,
-				0, // monthly_cost will be looked up from plan
-				isCellular ? "esim" : "none",
 			)
 			.run();
 
@@ -174,7 +172,7 @@ export class IspSubscriberProvision extends OpenAPIRoute {
 			subscriber_id: body.subscriber_id,
 			plan: body.plan,
 			status: "active",
-			...(isCellular ? { imsi, msisdn, apn: "darcloud.isp" } : {}),
+			...(isCellular ? { imsi, apn: "darcloud.isp" } : {}),
 		};
 	}
 }

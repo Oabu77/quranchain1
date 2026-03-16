@@ -1,0 +1,8 @@
+{
+  "model": "o4-mini",
+  "approval_mode": "suggest",
+  "providers": ["openai"],
+  "notify": true,
+  "full_auto": false,
+  "sandbox": false
+}

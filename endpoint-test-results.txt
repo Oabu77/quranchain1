@@ -1,0 +1,11 @@
+=== DarCloud Endpoint Test ===
+/isp/towers → 200
+/isp/signal-map → 200
+/isp/dashboard → 200
+/isp/plans → 200
+/isp/coverage → 200
+/isp/wifi-directory → 200
+/telecom/plans → 200
+/telecom/dashboard → 200
+/api/companies → 404
+/mesh/nodes → 200

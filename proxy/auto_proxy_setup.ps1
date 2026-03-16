@@ -44,6 +44,14 @@ function Set-WinHttpProxy {
         [string]$Bypass
     )
 
+    # WinHTTP operations require admin
+    $currentUser = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $principal = New-Object Security.Principal.WindowsPrincipal($currentUser)
+    if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+        Write-Host "WinHTTP proxy requires admin privileges. Skipping." -ForegroundColor Yellow
+        return
+    }
+
     $proxyServer = "$Host`:$Port"
     Write-Host "Configuring WinHTTP proxy: $proxyServer" -ForegroundColor Cyan
 
@@ -57,6 +65,12 @@ function Set-WinHttpProxy {
 }
 
 function Reset-WinHttpProxy {
+    $currentUser = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $principal = New-Object Security.Principal.WindowsPrincipal($currentUser)
+    if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+        Write-Host "WinHTTP reset requires admin privileges. Skipping." -ForegroundColor Yellow
+        return
+    }
     Write-Host "Resetting WinHTTP proxy..." -ForegroundColor Yellow
     Start-Process -FilePath "netsh" `
         -ArgumentList "winhttp reset proxy" `

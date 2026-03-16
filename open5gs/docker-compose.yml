@@ -158,7 +158,8 @@ services:
     depends_on:
       mongodb:
         condition: service_healthy
-      - nrf
+      nrf:
+        condition: service_started
     volumes:
       - ./config/udr.yaml:/opt/open5gs/etc/open5gs/udr.yaml
 
@@ -171,7 +172,8 @@ services:
     depends_on:
       mongodb:
         condition: service_healthy
-      - nrf
+      nrf:
+        condition: service_started
     volumes:
       - ./config/pcf.yaml:/opt/open5gs/etc/open5gs/pcf.yaml
 
@@ -210,7 +212,8 @@ services:
     depends_on:
       mongodb:
         condition: service_healthy
-      - nrf
+      nrf:
+        condition: service_started
     volumes:
       - ./config/hss.yaml:/opt/open5gs/etc/open5gs/hss.yaml
 
@@ -298,7 +301,8 @@ services:
     depends_on:
       mongodb:
         condition: service_healthy
-      - webui
+      webui:
+        condition: service_started
     environment:
       MONGO_URI: mongodb://mongodb:27017/open5gs
       ISP_PORT: 3000

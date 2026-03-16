@@ -3,6 +3,23 @@
 # Runs on boot: configures gateway, starts tunnel, heartbeat
 # Double-click this file or add to Startup folder
 # ═══════════════════════════════════════════════════════════
+
+param(
+    [string]$GatewayIP = "192.168.12.1",
+    [string]$AdminPassword = $env:DARCLOUD_GW_PASSWORD,
+    [string]$WifiPassword = $env:DARCLOUD_WIFI_PASSWORD,
+    [string]$NodeId = "tower-tmo-g4ar-c4cc",
+    [string]$Region = "us-west",
+    [string]$ApiUrl = "https://darcloud.host"
+)
+
+if (-not $AdminPassword) {
+    $AdminPassword = Read-Host "Enter gateway admin password"
+}
+if (-not $WifiPassword) {
+    $WifiPassword = Read-Host "Enter WiFi password for DarCloud-WiFi"
+}
+
 $ErrorActionPreference = "Continue"
 $darcloudDir = "$env:USERPROFILE\DarCloud"
 $logFile = "$darcloudDir\darcloud-setup.log"
@@ -37,13 +54,13 @@ $gwReachable = Test-Connection -ComputerName "192.168.12.1" -Count 1 -Quiet -Err
 if ($gwReachable) {
     Log "Gateway reachable — configuring WiFi SSID..."
     try {
-        $cred = @{ username = "admin"; password = "6G1oc52dsh8h" } | ConvertTo-Json
+        $cred = @{ username = "admin"; password = $AdminPassword } | ConvertTo-Json
         $login = Invoke-RestMethod -Uri "http://192.168.12.1/TMI/v1/auth/login" -Method Post -Body $cred -ContentType "application/json" -TimeoutSec 10
         $headers = @{ "Authorization" = "Bearer $($login.auth.token)" }
 
         $wifi = @{
-            "2.4ghz" = @{ ssidName = "DarCloud-WiFi"; wpaKey = "DarCloud2026"; isBroadcastEnabled = $true; isEnabled = $true }
-            "5.0ghz" = @{ ssidName = "DarCloud-WiFi-5G"; wpaKey = "DarCloud2026"; isBroadcastEnabled = $true; isEnabled = $true }
+            "2.4ghz" = @{ ssidName = "DarCloud-WiFi"; wpaKey = $WifiPassword; isBroadcastEnabled = $true; isEnabled = $true }
+            "5.0ghz" = @{ ssidName = "DarCloud-WiFi-5G"; wpaKey = $WifiPassword; isBroadcastEnabled = $true; isEnabled = $true }
         } | ConvertTo-Json -Depth 3
 
         Invoke-RestMethod -Uri "http://192.168.12.1/TMI/v1/network/configuration/v2" -Method Patch -Body $wifi -Headers $headers -ContentType "application/json" -TimeoutSec 15
@@ -80,12 +97,12 @@ if (Test-Path $cfPath) {
             # Report tunnel URL to DarCloud API so Codespace can use it
             try {
                 $report = @{
-                    node_id = "tower-tmo-g4ar-c4cc"
+                    node_id = $NodeId
                     tunnel_url = $url
                     status = "tunnel_active"
                     public_ip = (Invoke-RestMethod -Uri "https://api.ipify.org" -TimeoutSec 5)
                 } | ConvertTo-Json
-                Invoke-RestMethod -Uri "https://darcloud.host/mesh/heartbeat" -Method Post -Body $report -ContentType "application/json" -TimeoutSec 10
+                Invoke-RestMethod -Uri "$ApiUrl/mesh/heartbeat" -Method Post -Body $report -ContentType "application/json" -TimeoutSec 10
                 Log "Tunnel URL reported to DarCloud API"
             } catch {
                 Log "Could not report tunnel URL: $_"
@@ -103,9 +120,9 @@ Log "Registering with DarCloud mesh..."
 try {
     $ip = (Invoke-RestMethod -Uri "https://api.ipify.org" -TimeoutSec 5).Trim()
     $mesh = @{
-        node_id = "tower-tmo-g4ar-c4cc"
+        node_id = $NodeId
         hardware = "TMO-G4AR (Arcadyan 5G Gateway)"
-        region = "us-west"
+        region = $Region
         capabilities = @("gateway", "tower", "relay")
         wireguard_endpoint = $ip
         listen_port = 51820
@@ -114,7 +131,7 @@ try {
         device_type = "router"
         firmware_version = "tmo-g4ar-darcloud-1.0"
     } | ConvertTo-Json
-    Invoke-RestMethod -Uri "https://darcloud.host/mesh/connect" -Method Post -Body $mesh -ContentType "application/json" -TimeoutSec 10
+    Invoke-RestMethod -Uri "$ApiUrl/mesh/connect" -Method Post -Body $mesh -ContentType "application/json" -TimeoutSec 10
     Log "Registered as mesh tower (IP: $ip)"
 } catch {
     Log "Mesh registration: $_"
@@ -124,8 +141,8 @@ try {
 Log "Starting heartbeat loop (every 2 minutes)..."
 while ($true) {
     try {
-        $hb = @{ node_id = "tower-tmo-g4ar-c4cc"; status = "online" } | ConvertTo-Json
-        Invoke-RestMethod -Uri "https://darcloud.host/mesh/heartbeat" -Method Post -Body $hb -ContentType "application/json" -TimeoutSec 5 | Out-Null
+        $hb = @{ node_id = $NodeId; status = "online" } | ConvertTo-Json
+        Invoke-RestMethod -Uri "$ApiUrl/mesh/heartbeat" -Method Post -Body $hb -ContentType "application/json" -TimeoutSec 5 | Out-Null
     } catch {}
 
     # Check if tunnel is still running, restart if needed

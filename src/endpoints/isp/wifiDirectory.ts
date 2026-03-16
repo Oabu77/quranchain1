@@ -194,19 +194,15 @@ export class WifiHotspotRegister extends OpenAPIRoute {
 		await db
 			.prepare(
 				`INSERT OR REPLACE INTO isp_service_areas
-				 (area_id, area_name, area_type, coverage_radius_km, latitude, longitude,
-				  address, city, state, country, node_count, status, created_at)
-				 VALUES (?, ?, 'hotspot', 0.5, ?, ?, ?, ?, ?, ?, 1, 'active', datetime('now'))`,
+				 (area_id, name, area_type, radius_km, latitude, longitude,
+				  tower_count, status, created_at)
+				 VALUES (?, ?, 'hotspot', 0.5, ?, ?, 1, 'active', datetime('now'))`,
 			)
 			.bind(
 				areaId,
 				`DarCloud-WiFi @ ${body.city}`,
 				body.latitude,
 				body.longitude,
-				body.address || "",
-				body.city,
-				body.state,
-				body.country,
 			)
 			.run();
 
