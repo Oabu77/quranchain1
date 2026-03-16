@@ -7,7 +7,7 @@
 
 . /system/darcloud/etc/darcloud.conf
 
-SERVICES="5g-modem esim meshnode discovery gateway meshtalk telecom voice messaging tunnel"
+SERVICES="5g-modem esim meshnode discovery gateway meshtalk telecom voice messaging tunnel omarai"
 
 case "$1" in
     start)

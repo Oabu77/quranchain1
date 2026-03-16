@@ -11,6 +11,8 @@ import { wifiRouter } from "./endpoints/wifi/router";
 import { ispRouter } from "./endpoints/isp/router";
 import { auth, requireAuth } from "./endpoints/auth";
 import { contracts } from "./endpoints/contracts";
+import { subscriptions } from "./endpoints/subscriptions";
+import { sovereign } from "./endpoints/sovereign";
 import { ContentfulStatusCode } from "hono/utils/http-status";
 import { SystemHealth } from "./endpoints/systemHealth";
 import {
@@ -243,6 +245,80 @@ app.post("/api/stripe/webhook", async (c) => {
       }
     }
 
+    // Handle successful recurring invoice payments (subscription renewals)
+    if (event.type === "invoice.paid") {
+      const invoice = event.data.object;
+      const discordId = invoice.subscription_details?.metadata?.discord_id || invoice.metadata?.discord_id;
+      const amount = invoice.amount_paid || 0;
+      // Only process subscription renewal invoices (skip initial payment already handled by checkout.session.completed)
+      if (discordId && amount > 0 && invoice.billing_reason === "subscription_cycle") {
+        const product = invoice.subscription_details?.metadata?.product || "subscription";
+        const period = new Date().toISOString().slice(0, 7);
+        const splits = {
+          founder: Math.floor(amount * 0.30),
+          validators: Math.floor(amount * 0.40),
+          hardware: Math.floor(amount * 0.10),
+          ecosystem: Math.floor(amount * 0.18),
+          zakat: Math.floor(amount * 0.02),
+        };
+        const net = splits.founder + splits.validators + splits.hardware + splits.ecosystem + splits.zakat;
+        try {
+          const statements = [
+            db.prepare(
+              `INSERT INTO revenue_ledger (payment_id, stripe_session_id, discord_id, product, gross_amount, founder_amount, validators_amount, hardware_amount, ecosystem_amount, zakat_amount, discord_cut, net_amount, source, status, period)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'stripe', 'confirmed', ?)`
+            ).bind(
+              invoice.payment_intent || invoice.id, invoice.id, discordId, product,
+              amount, splits.founder, splits.validators, splits.hardware, splits.ecosystem, splits.zakat,
+              amount - net, net, period
+            ),
+          ];
+          const accounts = ["founder", "validators", "hardware", "ecosystem", "zakat"] as const;
+          for (const acct of accounts) {
+            statements.push(
+              db.prepare(
+                `UPDATE treasury_accounts SET balance_cents = balance_cents + ?, total_received_cents = total_received_cents + ?, updated_at = datetime('now') WHERE account_type = ?`
+              ).bind(splits[acct], splits[acct], acct)
+            );
+          }
+          // Update subscription period dates
+          if (invoice.subscription) {
+            const periodEnd = invoice.lines?.data?.[0]?.period?.end;
+            statements.push(
+              db.prepare(
+                `UPDATE active_subscriptions SET current_period_start = datetime('now'), current_period_end = ?, updated_at = datetime('now') WHERE stripe_subscription_id = ?`
+              ).bind(
+                periodEnd ? new Date(periodEnd * 1000).toISOString() : null,
+                invoice.subscription
+              )
+            );
+          }
+          await db.batch(statements);
+          console.log(`[Stripe] ✅ Renewal recorded: $${(amount / 100).toFixed(2)} | ${product} | ${discordId}`);
+        } catch (renewErr) {
+          console.error("[Stripe] Renewal ledger error:", renewErr);
+        }
+      }
+    }
+
+    // Handle new subscription creation (update period tracking)
+    if (event.type === "customer.subscription.created") {
+      const sub = event.data.object;
+      const discordId = sub.metadata?.discord_id;
+      if (discordId && sub.id) {
+        try {
+          const periodEnd = sub.current_period_end
+            ? new Date(sub.current_period_end * 1000).toISOString()
+            : null;
+          await db.prepare(
+            `UPDATE active_subscriptions SET current_period_end = ?, updated_at = datetime('now') WHERE stripe_subscription_id = ?`
+          ).bind(periodEnd, sub.id).run();
+        } catch (createErr) {
+          console.error("[Stripe] Subscription created handler error:", createErr);
+        }
+      }
+    }
+
     return c.json({ received: true });
   } catch (err) {
     console.error("Webhook error:", err);
@@ -412,6 +488,12 @@ app.get("/api/onboarding/status/:discordId", async (c) => {
 
 // ── Inter-Company Contracts, DarLaw, & IP Protection ──
 app.route("/api/contracts", contracts);
+
+// ── Subscription Management API ──
+app.route("/api/subscriptions", subscriptions);
+
+// ── Omar AI Sovereign Control API (phone ↔ cloud bridge) ──
+app.route("/api/sovereign", sovereign);
 
 // ── Privacy Request Endpoint ──
 app.post("/api/privacy-request", async (c) => {

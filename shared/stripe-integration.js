@@ -14,44 +14,56 @@ const REVENUE_SPLIT = {
 };
 
 // ── Stripe Configuration (LIVE — real Stripe product/price IDs) ──
+// NOTE: Update Stripe Dashboard prices to match these amounts
 const STRIPE_PRODUCTS = {
-  pro: {
-    name: "DarCloud Professional",
-    price_cents: 4900,
+  starter: {
+    name: "DarCloud Starter",
+    price_cents: 499,
     interval: "month",
     stripe_product_id: "prod_U8iRdXPXVFNjK4",
     stripe_price_id: "price_1TAR0SAqs2ifkfkqOKa2Rzq3",
-    description: "Full DarCloud stack with FungiMesh node",
-    features: ["FungiMesh Node", "10,000 QRN Bonus", "Priority Support", "API Access"],
+    description: "Individual DarCloud access — AI, dashboards, community",
+    features: ["20 AI Questions/Day", "Basic Dashboards", "Community Access", "Email Support"],
   },
-  enterprise: {
-    name: "DarCloud Enterprise",
-    price_cents: 49900,
+  pro: {
+    name: "DarCloud Professional",
+    price_cents: 999,
     interval: "month",
     stripe_product_id: "prod_U8iRGJCeDwYRpF",
     stripe_price_id: "price_1TAR0TAqs2ifkfkqdtr8kWEf",
-    description: "Enterprise-grade DarCloud with SLA",
-    features: ["Dedicated Node Cluster", "100,000 QRN", "Custom Domain", "SLA 99.9%", "White-Label"],
+    description: "Full DarCloud stack — unlimited AI, NFTs, priority support",
+    features: ["Unlimited AI (GPT-4o)", "NFT Minting & Trading", "FungiMesh Node", "Priority Support", "API Access"],
   },
-  fungimesh_node: {
-    name: "FungiMesh Node (Standalone)",
-    price_cents: 1999,
+  enterprise: {
+    name: "DarCloud Enterprise",
+    price_cents: 2999,
     interval: "month",
     stripe_product_id: "prod_U8iRtqLIqZxigf",
     stripe_price_id: "price_1TAR0TAqs2ifkfkqqrjzoLdm",
-    description: "Individual FungiMesh mesh node",
+    description: "Enterprise-grade DarCloud with SLA, white-label, dedicated cluster",
+    features: ["Dedicated Node Cluster", "100,000 QRN", "Custom Domain", "SLA 99.9%", "White-Label", "Account Manager"],
   },
-  hwc_premium: {
-    name: "Halal Wealth Club Premium",
-    price_cents: 9900,
+  fungimesh_node: {
+    name: "FungiMesh Node (Standalone)",
+    price_cents: 499,
     interval: "month",
     stripe_product_id: "prod_U8iRQESQNJiJ59",
     stripe_price_id: "price_1TAR0TAqs2ifkfkqKFPTW7hM",
-    description: "Premium Islamic banking services",
+    description: "Individual FungiMesh mesh node — earn QRN rewards",
+    features: ["Mesh Relay Node", "QRN Validator Rewards", "E2E Encryption", "Network Governance"],
+  },
+  hwc_premium: {
+    name: "Halal Wealth Club Premium",
+    price_cents: 1499,
+    interval: "month",
+    stripe_product_id: "prod_U8iRv2gs6CmarP",
+    stripe_price_id: "price_1TAR0UAqs2ifkfkqLNw6DvpC",
+    description: "Premium Islamic banking & investment tools",
+    features: ["Shariah Portfolio Screener", "Zakat Calculator", "Halal AI Research", "DeFi Yield (Halal)"],
   },
   gas_toll: {
     name: "QuranChain Gas Toll",
-    price_cents: 0, // Variable
+    price_cents: 0, // Variable per-transaction
     interval: "one_time",
     stripe_product_id: "prod_U8iRv2gs6CmarP",
     stripe_price_id: "price_1TAR0UAqs2ifkfkqLNw6DvpC",

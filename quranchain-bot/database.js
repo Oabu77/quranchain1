@@ -112,6 +112,14 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_scores_user ON game_scores(user_id);
 `);
 
+// ── Migrations: add columns that may be missing from older DBs ──
+try {
+  const cols = db.prepare("PRAGMA table_info(trades)").all().map(c => c.name);
+  if (!cols.includes("usd_amount")) db.exec("ALTER TABLE trades ADD COLUMN usd_amount REAL NOT NULL DEFAULT 0");
+  if (!cols.includes("rate")) db.exec("ALTER TABLE trades ADD COLUMN rate REAL NOT NULL DEFAULT 0");
+  if (!cols.includes("fee_qrn")) db.exec("ALTER TABLE trades ADD COLUMN fee_qrn REAL NOT NULL DEFAULT 0");
+} catch (e) { /* table doesn't exist yet — schema above will create it */ }
+
 // ── Prepared Statements ───────────────────────────────────
 const stmts = {
   getWallet: db.prepare("SELECT * FROM wallets WHERE user_id = ?"),

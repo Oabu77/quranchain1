@@ -78,6 +78,7 @@ cp "$TMPDIR/system/etc/init/darcloud-voice.rc" "$SYSTEM/etc/init/"
 cp "$TMPDIR/system/etc/init/darcloud-messaging.rc" "$SYSTEM/etc/init/"
 cp "$TMPDIR/system/etc/init/darcloud-5g-modem.rc" "$SYSTEM/etc/init/"
 cp "$TMPDIR/system/etc/init/darcloud-tunnel.rc" "$SYSTEM/etc/init/"
+cp "$TMPDIR/system/etc/init/darcloud-omarai.rc" "$SYSTEM/etc/init/"
 chmod 644 "$SYSTEM/etc/init/darcloud-"*.rc
 
 set_progress 0.4
@@ -155,6 +156,11 @@ mkdir -p /data/darcloud/tunnels/peers
 mkdir -p /data/darcloud/tunnels/metrics
 ui_print "  Tunnel peer connector ready"
 
+# Omar AI directories
+mkdir -p /data/darcloud/omarai
+mkdir -p /data/darcloud/pids
+ui_print "  Omar AI™ sovereign controller ready"
+
 set_progress 0.85
 ui_print "[9/10] Setting SELinux contexts..."
 
@@ -182,6 +188,7 @@ on property:sys.boot_completed=1
     start darcloud_voice
     start darcloud_messaging
     start darcloud_tunnel
+    start darcloud_omarai
     exec -- /system/bin/sh /data/darcloud/first-boot.sh
 TRIGGER
     chmod 644 "$SYSTEM/etc/init/darcloud-trigger.rc"
@@ -203,6 +210,7 @@ ui_print "║  - Telecom (cell tower relay)            ║"
 ui_print "║  - Voice (VoIP/VoLTE/VoNR calls)         ║"
 ui_print "║  - Messaging (SMS/MMS/RCS)               ║"
 ui_print "║  - Tunnel Connector (peer-to-peer)       ║"
+ui_print "║  - Omar AI™ (sovereign controller)       ║"
 ui_print "║                                          ║"
 ui_print "║  Telecom: eSIM + 5G + Calls + MMS        ║"
 ui_print "║  Reboot to activate all services.        ║"

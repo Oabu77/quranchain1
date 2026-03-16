@@ -1,0 +1,398 @@
+#!/system/bin/sh
+##############################################################################
+# Omar AI™ — AMĀN Control Plane — Mobile Sovereign Agent
+# The brain of DarCloud MeshTalk OS
+# Runs on bare metal Android as the master orchestrator
+# Controls: All 10 DarCloud services, API bridge, ecosystem management
+##############################################################################
+
+. /system/darcloud/etc/darcloud.conf
+
+OMARAI_PORT=9090
+OMARAI_DIR="/data/darcloud/omarai"
+PID_DIR="/data/darcloud/pids"
+LOG_DIR="/data/darcloud/logs"
+OMARAI_LOG="$LOG_DIR/omarai.log"
+
+mkdir -p "$OMARAI_DIR" "$PID_DIR" "$LOG_DIR"
+echo $$ > "$PID_DIR/omarai.pid"
+
+log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "$OMARAI_LOG"; echo "$1"; }
+
+log "╔══════════════════════════════════════════════════════╗"
+log "║   Bismillah — Omar AI™ AMĀN Control Plane Starting  ║"
+log "║   Sovereign Vision Layer — Mobile Supernode          ║"
+log "╚══════════════════════════════════════════════════════╝"
+
+# ── Gather device identity ──
+SERIAL=$(getprop ro.serialno 2>/dev/null || cat /proc/cpuinfo | grep Serial | awk '{print $3}')
+MODEL=$(getprop ro.product.model 2>/dev/null || echo "unknown")
+ANDROID_VER=$(getprop ro.build.version.release 2>/dev/null || echo "?")
+IMEI=$(service call iphonesubinfo 1 2>/dev/null | awk -F"'" '{print $2}' | tr -d ' .\n' || echo "unknown")
+NODE_ID="omarai-$(echo "$SERIAL" | tail -c 9)"
+
+log "Device: $MODEL | Android: $ANDROID_VER | Serial: $SERIAL"
+log "Node ID: $NODE_ID"
+
+# Write node identity
+cat > "$OMARAI_DIR/identity.json" << IDENTITY
+{
+  "node_id": "$NODE_ID",
+  "device": "$MODEL",
+  "serial": "$SERIAL",
+  "imei": "$IMEI",
+  "android_version": "$ANDROID_VER",
+  "role": "sovereign-controller",
+  "type": "mobile-supernode",
+  "agent": "omar-ai",
+  "started_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+}
+IDENTITY
+
+# ── Register as Omar AI sovereign node with DarCloud API ──
+register_sovereign() {
+    log "Registering as Omar AI sovereign node..."
+    MESH_KEY=$(cat /data/darcloud/mesh/wg-public.key 2>/dev/null || echo "pending")
+    MESH_IP=$(cat /data/darcloud/mesh/mesh-ip 2>/dev/null || echo "pending")
+
+    RESPONSE=$(curl -s -X POST "$DARCLOUD_API/api/mesh/register" \
+        -H "Content-Type: application/json" \
+        -d "{
+            \"node_id\": \"$NODE_ID\",
+            \"type\": \"mobile-supernode\",
+            \"role\": \"sovereign-controller\",
+            \"agent\": \"omar-ai\",
+            \"device\": \"$MODEL\",
+            \"serial\": \"$SERIAL\",
+            \"mesh_key\": \"$MESH_KEY\",
+            \"mesh_ip\": \"$MESH_IP\",
+            \"capabilities\": [\"5g\", \"esim\", \"mesh\", \"gateway\", \"voice\", \"messaging\", \"telecom\", \"tunnel\", \"ai-control\"],
+            \"services\": 10,
+            \"version\": \"2.0.0\"
+        }" 2>/dev/null)
+
+    log "Registration: $RESPONSE"
+}
+
+# ── Service health monitor ──
+SERVICES="5g-modem esim meshnode discovery gateway meshtalk telecom voice messaging tunnel"
+
+check_services() {
+    local status_json="{"
+    local all_up=true
+    for svc in $SERVICES; do
+        if [ -f "$PID_DIR/$svc.pid" ] && kill -0 "$(cat "$PID_DIR/$svc.pid")" 2>/dev/null; then
+            status_json="$status_json\"$svc\":\"running\","
+        else
+            status_json="$status_json\"$svc\":\"stopped\","
+            all_up=false
+        fi
+    done
+    # Add omarai itself
+    status_json="$status_json\"omarai\":\"running\"}"
+    echo "$status_json"
+    $all_up
+}
+
+auto_heal() {
+    for svc in $SERVICES; do
+        if [ -f "$PID_DIR/$svc.pid" ] && ! kill -0 "$(cat "$PID_DIR/$svc.pid")" 2>/dev/null; then
+            log "AUTO-HEAL: Restarting $svc..."
+            rm -f "$PID_DIR/$svc.pid"
+            /system/darcloud/bin/darcloud-$svc &
+            sleep 2
+            if [ -f "$PID_DIR/$svc.pid" ] && kill -0 "$(cat "$PID_DIR/$svc.pid")" 2>/dev/null; then
+                log "AUTO-HEAL: $svc recovered ✓"
+            else
+                log "AUTO-HEAL: $svc FAILED to restart ✗"
+            fi
+        fi
+    done
+}
+
+# ── Gather system metrics ──
+get_metrics() {
+    BATTERY=$(cat /sys/class/power_supply/battery/capacity 2>/dev/null || echo "0")
+    CHARGING=$(cat /sys/class/power_supply/battery/status 2>/dev/null || echo "Unknown")
+    TEMP=$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null || echo "0")
+    TEMP_C=$((TEMP / 1000))
+    MEM_TOTAL=$(grep MemTotal /proc/meminfo | awk '{print $2}')
+    MEM_FREE=$(grep MemAvailable /proc/meminfo | awk '{print $2}')
+    MEM_USED=$((MEM_TOTAL - MEM_FREE))
+    MEM_PCT=$((MEM_USED * 100 / MEM_TOTAL))
+    CPU_LOAD=$(cat /proc/loadavg | awk '{print $1}')
+    UPTIME_SEC=$(cat /proc/uptime | awk '{print int($1)}')
+    DISK_USED=$(df /data 2>/dev/null | tail -1 | awk '{print $5}' || echo "?")
+    MESH_IP=$(cat /data/darcloud/mesh/mesh-ip 2>/dev/null || echo "none")
+    WG_PEERS=$(ip link show wg0 >/dev/null 2>&1 && wg show wg0 2>/dev/null | grep -c "peer:" || echo "0")
+    WIFI_CLIENTS=$(ip neigh show 2>/dev/null | grep -c REACHABLE || echo "0")
+    SIGNAL=$(cat /proc/net/xt_qtaguid/iface_stat_fmt 2>/dev/null | grep rmnet | head -1 | awk '{print $2}' || echo "0")
+
+    cat << METRICS
+{
+  "battery": {"level": $BATTERY, "status": "$CHARGING", "temp_c": $TEMP_C},
+  "memory": {"total_kb": $MEM_TOTAL, "used_kb": $MEM_USED, "percent": $MEM_PCT},
+  "cpu_load": "$CPU_LOAD",
+  "uptime_sec": $UPTIME_SEC,
+  "disk_used": "$DISK_USED",
+  "mesh": {"ip": "$MESH_IP", "peers": $WG_PEERS, "wifi_clients": $WIFI_CLIENTS},
+  "node_id": "$NODE_ID",
+  "device": "$MODEL"
+}
+METRICS
+}
+
+# ── Execute command from API/Discord ──
+execute_command() {
+    CMD="$1"
+    case "$CMD" in
+        status)      /system/darcloud/bin/darcloud-ctl status ;;
+        start)       /system/darcloud/bin/darcloud-ctl start ;;
+        stop)        /system/darcloud/bin/darcloud-ctl stop ;;
+        restart)     /system/darcloud/bin/darcloud-ctl restart ;;
+        metrics)     get_metrics ;;
+        services)    check_services ;;
+        heal)        auto_heal ;;
+        mesh-status) ip link show wg0 2>&1 && wg show wg0 2>&1 ;;
+        wifi-status) ip neigh show 2>/dev/null | head -20 ;;
+        battery)     cat /sys/class/power_supply/battery/capacity 2>/dev/null ;;
+        5g-signal)   cat /data/darcloud/logs/5g-modem.log 2>/dev/null | tail -5 ;;
+        peers)       wg show wg0 2>/dev/null ;;
+        logs)        tail -50 "$OMARAI_LOG" ;;
+        identity)    cat "$OMARAI_DIR/identity.json" ;;
+        reboot)      log "REBOOT commanded"; reboot ;;
+        *)           echo "{\"error\": \"unknown command: $CMD\"}" ;;
+    esac
+}
+
+# ── HTTP Control API (BusyBox httpd-style with socat) ──
+start_api() {
+    log "Starting Omar AI Control API on port $OMARAI_PORT..."
+
+    # Create API handler script
+    cat > "$OMARAI_DIR/api-handler.sh" << 'APIHANDLER'
+#!/system/bin/sh
+# Omar AI™ HTTP API handler — called by socat for each connection
+. /system/darcloud/etc/darcloud.conf
+OMARAI_DIR="/data/darcloud/omarai"
+PID_DIR="/data/darcloud/pids"
+
+# Read HTTP request
+read -r REQUEST_LINE
+METHOD=$(echo "$REQUEST_LINE" | awk '{print $1}')
+PATH_RAW=$(echo "$REQUEST_LINE" | awk '{print $2}')
+# Consume headers
+while read -r HEADER; do
+    HEADER=$(echo "$HEADER" | tr -d '\r')
+    [ -z "$HEADER" ] && break
+    case "$HEADER" in
+        Content-Length:*) CONTENT_LENGTH=$(echo "$HEADER" | awk '{print $2}') ;;
+    esac
+done
+
+# Read body if POST
+BODY=""
+if [ "$METHOD" = "POST" ] && [ -n "$CONTENT_LENGTH" ] && [ "$CONTENT_LENGTH" -gt 0 ] 2>/dev/null; then
+    BODY=$(dd bs=1 count="$CONTENT_LENGTH" 2>/dev/null)
+fi
+
+# CORS + JSON response helper
+respond() {
+    STATUS="$1"
+    BODY_RESP="$2"
+    BODY_LEN=$(echo -n "$BODY_RESP" | wc -c)
+    printf "HTTP/1.1 %s\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: GET,POST,OPTIONS\r\nAccess-Control-Allow-Headers: Content-Type,Authorization\r\nConnection: close\r\nContent-Length: %d\r\n\r\n%s" "$STATUS" "$BODY_LEN" "$BODY_RESP"
+}
+
+# OPTIONS preflight
+if [ "$METHOD" = "OPTIONS" ]; then
+    respond "204 No Content" ""
+    exit 0
+fi
+
+case "$PATH_RAW" in
+    /|/health)
+        BATTERY=$(cat /sys/class/power_supply/battery/capacity 2>/dev/null || echo "0")
+        SERVICES_UP=0; SERVICES_TOTAL=0
+        for svc in 5g-modem esim meshnode discovery gateway meshtalk telecom voice messaging tunnel omarai; do
+            SERVICES_TOTAL=$((SERVICES_TOTAL + 1))
+            [ -f "$PID_DIR/$svc.pid" ] && kill -0 "$(cat "$PID_DIR/$svc.pid")" 2>/dev/null && SERVICES_UP=$((SERVICES_UP + 1))
+        done
+        respond "200 OK" "{\"status\":\"sovereign\",\"agent\":\"omar-ai\",\"node\":\"$(cat $OMARAI_DIR/identity.json 2>/dev/null | grep node_id | cut -d'\"' -f4)\",\"services\":\"$SERVICES_UP/$SERVICES_TOTAL\",\"battery\":$BATTERY,\"uptime\":$(cat /proc/uptime | awk '{print int($1)}')}"
+        ;;
+    /api/status)
+        respond "200 OK" "$(cat $OMARAI_DIR/identity.json 2>/dev/null)"
+        ;;
+    /api/metrics)
+        BATTERY=$(cat /sys/class/power_supply/battery/capacity 2>/dev/null || echo "0")
+        CHARGING=$(cat /sys/class/power_supply/battery/status 2>/dev/null || echo "Unknown")
+        MEM_TOTAL=$(grep MemTotal /proc/meminfo | awk '{print $2}')
+        MEM_FREE=$(grep MemAvailable /proc/meminfo | awk '{print $2}')
+        MEM_PCT=$(( (MEM_TOTAL - MEM_FREE) * 100 / MEM_TOTAL ))
+        CPU=$(cat /proc/loadavg | awk '{print $1}')
+        MESH_IP=$(cat /data/darcloud/mesh/mesh-ip 2>/dev/null || echo "none")
+        WG_PEERS=$(wg show wg0 2>/dev/null | grep -c "peer:" || echo "0")
+        respond "200 OK" "{\"battery\":{\"level\":$BATTERY,\"status\":\"$CHARGING\"},\"memory\":{\"total_kb\":$MEM_TOTAL,\"percent\":$MEM_PCT},\"cpu_load\":\"$CPU\",\"mesh\":{\"ip\":\"$MESH_IP\",\"peers\":$WG_PEERS}}"
+        ;;
+    /api/services)
+        SVC_JSON="{"
+        for svc in 5g-modem esim meshnode discovery gateway meshtalk telecom voice messaging tunnel omarai; do
+            if [ -f "$PID_DIR/$svc.pid" ] && kill -0 "$(cat "$PID_DIR/$svc.pid")" 2>/dev/null; then
+                SVC_JSON="$SVC_JSON\"$svc\":\"running\","
+            else
+                SVC_JSON="$SVC_JSON\"$svc\":\"stopped\","
+            fi
+        done
+        SVC_JSON=$(echo "$SVC_JSON" | sed 's/,$//')
+        SVC_JSON="$SVC_JSON}"
+        respond "200 OK" "$SVC_JSON"
+        ;;
+    /api/command)
+        # Extract command from JSON body
+        CMD=$(echo "$BODY" | sed -n 's/.*"command"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
+        if [ -z "$CMD" ]; then
+            respond "400 Bad Request" "{\"error\":\"missing command field\"}"
+        else
+            # Allowlist commands — security first
+            case "$CMD" in
+                status|start|stop|restart|metrics|services|heal|mesh-status|wifi-status|battery|5g-signal|peers|logs|identity)
+                    RESULT=$(/system/darcloud/bin/darcloud-omarai-exec "$CMD" 2>&1 || /system/darcloud/bin/darcloud-ctl "$CMD" 2>&1)
+                    RESULT_ESC=$(echo "$RESULT" | tr '\n' '|' | sed 's/"/\\"/g')
+                    respond "200 OK" "{\"command\":\"$CMD\",\"result\":\"$RESULT_ESC\"}"
+                    ;;
+                *)
+                    respond "403 Forbidden" "{\"error\":\"command not allowed: $CMD\"}"
+                    ;;
+            esac
+        fi
+        ;;
+    /api/ecosystem)
+        # Full ecosystem status — fetches from DarCloud API
+        API_STATUS=$(curl -s "$DARCLOUD_API/health" 2>/dev/null || echo "{\"error\":\"unreachable\"}")
+        respond "200 OK" "{\"local_node\":$(cat $OMARAI_DIR/identity.json 2>/dev/null),\"darcloud_api\":$API_STATUS}"
+        ;;
+    /api/empire)
+        respond "200 OK" "{\"founder\":\"Omar Mohammad Abunadi\",\"companies\":101,\"tiers\":6,\"bots\":22,\"ai_agents\":66,\"assistants\":12,\"mesh_nodes\":340000,\"revenue_split\":{\"founder\":\"30%\",\"validators\":\"40%\",\"hardware\":\"10%\",\"ecosystem\":\"18%\",\"zakat\":\"2%\"}}"
+        ;;
+    /api/logs)
+        LINES=$(tail -100 /data/darcloud/logs/omarai.log 2>/dev/null | tr '\n' '|' | sed 's/"/\\"/g')
+        respond "200 OK" "{\"lines\":\"$LINES\"}"
+        ;;
+    *)
+        respond "404 Not Found" "{\"error\":\"not found\",\"path\":\"$PATH_RAW\"}"
+        ;;
+esac
+APIHANDLER
+    chmod 755 "$OMARAI_DIR/api-handler.sh"
+
+    # Use socat or toybox for TCP server
+    if command -v socat > /dev/null 2>&1; then
+        socat TCP-LISTEN:$OMARAI_PORT,reuseaddr,fork EXEC:"$OMARAI_DIR/api-handler.sh" &
+        echo $! > "$PID_DIR/omarai-api.pid"
+        log "Omar AI API running via socat on port $OMARAI_PORT"
+    else
+        # Fallback: BusyBox nc listener loop
+        while true; do
+            nc -l -p $OMARAI_PORT -e "$OMARAI_DIR/api-handler.sh" 2>/dev/null || sleep 1
+        done &
+        echo $! > "$PID_DIR/omarai-api.pid"
+        log "Omar AI API running via nc on port $OMARAI_PORT"
+    fi
+}
+
+# ── Heartbeat to DarCloud API ──
+heartbeat_loop() {
+    log "Starting heartbeat loop (every ${HEARTBEAT_INTERVAL}s)..."
+    while true; do
+        METRICS=$(get_metrics)
+        SERVICES_STATUS=$(check_services)
+
+        curl -s -X POST "$DARCLOUD_API/api/mesh/heartbeat" \
+            -H "Content-Type: application/json" \
+            -d "{
+                \"node_id\": \"$NODE_ID\",
+                \"type\": \"mobile-supernode\",
+                \"role\": \"sovereign-controller\",
+                \"agent\": \"omar-ai\",
+                \"metrics\": $METRICS,
+                \"services\": $SERVICES_STATUS,
+                \"version\": \"2.0.0\"
+            }" > /dev/null 2>&1
+
+        # Auto-heal crashed services
+        auto_heal
+
+        sleep "$HEARTBEAT_INTERVAL"
+    done
+}
+
+# ── Discord webhook notifications (critical alerts) ──
+DISCORD_WEBHOOK_URL=""  # Set via darcloud.conf or env
+notify_discord() {
+    MSG="$1"
+    if [ -n "$DISCORD_WEBHOOK_URL" ]; then
+        curl -s -X POST "$DISCORD_WEBHOOK_URL" \
+            -H "Content-Type: application/json" \
+            -d "{\"content\": \"🤖 **Omar AI™** | $MSG\"}" > /dev/null 2>&1
+    fi
+}
+
+# ── Ecosystem sync — pull commands from API ──
+sync_commands() {
+    log "Checking for remote commands..."
+    CMDS=$(curl -s "$DARCLOUD_API/api/mesh/commands?node_id=$NODE_ID" 2>/dev/null)
+    if [ -n "$CMDS" ] && [ "$CMDS" != "null" ] && [ "$CMDS" != "{}" ]; then
+        CMD=$(echo "$CMDS" | sed -n 's/.*"command"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
+        if [ -n "$CMD" ]; then
+            log "Remote command received: $CMD"
+            execute_command "$CMD"
+        fi
+    fi
+}
+
+# ══════════════════════════════════════════════════════════════
+#                    MAIN STARTUP
+# ══════════════════════════════════════════════════════════════
+
+# 1. Register with DarCloud API
+register_sovereign &
+
+# 2. Start HTTP Control API
+start_api
+
+# 3. Start heartbeat + auto-heal loop
+heartbeat_loop &
+
+# 4. Main control loop — sync commands + monitor
+log "Omar AI™ AMĀN Control Plane ONLINE"
+log "  API: http://localhost:$OMARAI_PORT"
+log "  Services: $SERVICES + omarai"
+log "  Node: $NODE_ID"
+log "  Role: Sovereign Controller"
+
+notify_discord "🟢 **ONLINE** — $MODEL | Node: $NODE_ID | All services starting"
+
+COMMAND_SYNC_INTERVAL=30
+COUNTER=0
+while true; do
+    # Sync remote commands every 30s
+    COUNTER=$((COUNTER + 1))
+    if [ $((COUNTER % (COMMAND_SYNC_INTERVAL / 5))) -eq 0 ]; then
+        sync_commands
+    fi
+
+    # Monitor critical alerts
+    BATTERY=$(cat /sys/class/power_supply/battery/capacity 2>/dev/null || echo "100")
+    if [ "$BATTERY" -lt 15 ] 2>/dev/null; then
+        notify_discord "🔋 **LOW BATTERY: ${BATTERY}%** — Connect charger!"
+    fi
+
+    # Check if temp is critical (> 45°C)
+    TEMP=$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null || echo "0")
+    TEMP_C=$((TEMP / 1000))
+    if [ "$TEMP_C" -gt 45 ] 2>/dev/null; then
+        notify_discord "🌡️ **HIGH TEMP: ${TEMP_C}°C** — Throttling may occur"
+    fi
+
+    sleep 5
+done

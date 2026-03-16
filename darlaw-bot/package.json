@@ -3,10 +3,13 @@
   "version": "1.0.0",
   "description": "DarLaw™ — Legal AI Bot with 11 Specialized Agents",
   "main": "bot.js",
-  "scripts": { "start": "node bot.js", "register": "node register-commands.js" },
+  "scripts": {
+    "start": "node bot.js",
+    "register": "node register-commands.js"
+  },
   "dependencies": {
     "better-sqlite3": "^12.6.2",
     "discord.js": "^14.18.0",
-    "dotenv": "^16.4.7"
+    "dotenv": "^16.6.1"
   }
 }

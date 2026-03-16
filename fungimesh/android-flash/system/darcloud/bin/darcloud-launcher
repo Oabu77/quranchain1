@@ -1,0 +1,217 @@
+#!/system/bin/sh
+##############################################################################
+# DarCloud MeshTalk OS — Launcher Configuration
+# Sets up the Android home screen as DarCloud™ command center
+# Configures: wallpaper, shortcuts, notification channels, settings
+##############################################################################
+
+. /system/darcloud/etc/darcloud.conf
+
+LAUNCHER_DIR="/data/darcloud/launcher"
+mkdir -p "$LAUNCHER_DIR"
+
+echo "╔══════════════════════════════════════════════════════╗"
+echo "║   DarCloud MeshTalk OS — Launcher Setup             ║"
+echo "║   Bismillah — Configuring Omar AI Command Center    ║"
+echo "╚══════════════════════════════════════════════════════╝"
+
+# ── System settings for DarCloud OS ──
+configure_system() {
+    echo "[1/5] Configuring system settings..."
+
+    # Device name
+    settings put global device_name "Omar-AI-Node" 2>/dev/null
+    settings put secure bluetooth_name "DarCloud-OmarAI" 2>/dev/null
+
+    # WiFi hotspot configuration
+    settings put global tether_dun_required 0 2>/dev/null
+    settings put global wifi_ap_ssid "DarCloud-WiFi" 2>/dev/null
+
+    # Keep screen on while charging (for always-on dashboard)
+    settings put global stay_on_while_plugged_in 3 2>/dev/null
+
+    # Developer options — useful for mesh operations
+    settings put global adb_enabled 1 2>/dev/null
+    settings put global development_settings_enabled 1 2>/dev/null
+
+    # Battery optimization — exempt DarCloud services
+    cmd deviceidle whitelist +com.darcloud.meshtalk 2>/dev/null
+    cmd deviceidle whitelist +com.darcloud.omarai 2>/dev/null
+
+    echo "  ✓ System configured"
+}
+
+# ── Create web app shortcuts on home screen ──
+create_shortcuts() {
+    echo "[2/5] Creating DarCloud shortcuts..."
+
+    # Shortcut definitions for DarCloud ecosystem
+    cat > "$LAUNCHER_DIR/shortcuts.json" << 'SHORTCUTS'
+{
+  "shortcuts": [
+    {
+      "name": "Omar AI™ Dashboard",
+      "url": "http://localhost:9090",
+      "icon": "omarai",
+      "position": 1
+    },
+    {
+      "name": "DarCloud Dashboard",
+      "url": "https://darcloud.host/dashboard",
+      "icon": "dashboard",
+      "position": 2
+    },
+    {
+      "name": "Empire Admin",
+      "url": "https://darcloud.host/admin",
+      "icon": "admin",
+      "position": 3
+    },
+    {
+      "name": "Revenue Monitor",
+      "url": "https://darcloud.host/api/revenue/dashboard",
+      "icon": "revenue",
+      "position": 4
+    },
+    {
+      "name": "Mesh Network",
+      "url": "http://localhost:8080",
+      "icon": "mesh",
+      "position": 5
+    },
+    {
+      "name": "WiFi Gateway",
+      "url": "http://localhost:8888",
+      "icon": "wifi",
+      "position": 6
+    },
+    {
+      "name": "DarCloud API Docs",
+      "url": "https://darcloud.host/docs",
+      "icon": "api",
+      "position": 7
+    },
+    {
+      "name": "5G Status",
+      "url": "http://localhost:9090/api/metrics",
+      "icon": "5g",
+      "position": 8
+    }
+  ]
+}
+SHORTCUTS
+
+    # Install shortcuts via Android am command (intents)
+    while IFS= read -r shortcut; do
+        NAME=$(echo "$shortcut" | sed -n 's/.*"name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
+        URL=$(echo "$shortcut" | sed -n 's/.*"url"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
+        if [ -n "$NAME" ] && [ -n "$URL" ]; then
+            am start -a android.intent.action.VIEW -d "$URL" 2>/dev/null &
+            sleep 0.5
+            # Kill immediately — just pre-cache the bookmark
+            am force-stop com.android.chrome 2>/dev/null
+        fi
+    done < "$LAUNCHER_DIR/shortcuts.json"
+
+    echo "  ✓ $( grep -c '"name"' "$LAUNCHER_DIR/shortcuts.json") shortcuts configured"
+}
+
+# ── Create notification channels ──
+setup_notifications() {
+    echo "[3/5] Setting up notification channels..."
+
+    cat > "$LAUNCHER_DIR/notifications.json" << 'NOTIF'
+{
+  "channels": [
+    {"id": "omarai_critical", "name": "Omar AI Critical", "importance": 5, "vibrate": true, "sound": true},
+    {"id": "omarai_status", "name": "Omar AI Status", "importance": 3, "vibrate": false, "sound": false},
+    {"id": "mesh_network", "name": "Mesh Network", "importance": 3, "vibrate": true, "sound": false},
+    {"id": "revenue_alerts", "name": "Revenue Alerts", "importance": 4, "vibrate": true, "sound": true},
+    {"id": "security_alerts", "name": "Security Alerts", "importance": 5, "vibrate": true, "sound": true},
+    {"id": "meshtalk_messages", "name": "MeshTalk Messages", "importance": 4, "vibrate": true, "sound": true}
+  ]
+}
+NOTIF
+
+    echo "  ✓ 6 notification channels configured"
+}
+
+# ── DarCloud OS status bar widget ──
+create_status_widget() {
+    echo "[4/5] Creating status bar widget..."
+
+    # Persistent notification showing DarCloud status
+    cat > "$LAUNCHER_DIR/status-widget.sh" << 'WIDGET'
+#!/system/bin/sh
+# DarCloud OS Status Widget — persistent notification
+. /system/darcloud/etc/darcloud.conf
+PID_DIR="/data/darcloud/pids"
+
+while true; do
+    BATTERY=$(cat /sys/class/power_supply/battery/capacity 2>/dev/null || echo "?")
+    SERVICES_UP=0
+    for svc in 5g-modem esim meshnode discovery gateway meshtalk telecom voice messaging tunnel omarai; do
+        [ -f "$PID_DIR/$svc.pid" ] && kill -0 "$(cat "$PID_DIR/$svc.pid")" 2>/dev/null && SERVICES_UP=$((SERVICES_UP + 1))
+    done
+    MESH_IP=$(cat /data/darcloud/mesh/mesh-ip 2>/dev/null || echo "none")
+    WG_PEERS=$(wg show wg0 2>/dev/null | grep -c "peer:" || echo "0")
+
+    # Update persistent notification (uses cmd notification)
+    cmd notification post -S bigtext -t "Omar AI™ — ONLINE" \
+        "darcloud_status" \
+        "Services: $SERVICES_UP/11 | Mesh: $MESH_IP ($WG_PEERS peers) | 🔋${BATTERY}%" \
+        2>/dev/null
+
+    sleep 30
+done
+WIDGET
+    chmod 755 "$LAUNCHER_DIR/status-widget.sh"
+
+    echo "  ✓ Status widget configured"
+}
+
+# ── Boot animation ──
+setup_boot_animation() {
+    echo "[5/5] Setting up DarCloud boot branding..."
+
+    # Create boot message (shown after Android boots)
+    cat > "$LAUNCHER_DIR/boot-message.sh" << 'BOOTMSG'
+#!/system/bin/sh
+# Show DarCloud boot message
+sleep 5
+input keyevent KEYCODE_WAKEUP 2>/dev/null
+sleep 1
+cmd notification post -S bigtext -t "🕌 Bismillah — DarCloud MeshTalk OS" \
+    "darcloud_boot" \
+    "Omar AI™ AMĀN Control Plane initializing...\n101 companies | 22 bots | 66 AI agents\nSovereign Mobile Supernode ONLINE" \
+    2>/dev/null
+BOOTMSG
+    chmod 755 "$LAUNCHER_DIR/boot-message.sh"
+
+    echo "  ✓ Boot branding configured"
+}
+
+# ── Main ──
+configure_system
+create_shortcuts
+setup_notifications
+create_status_widget
+setup_boot_animation
+
+echo ""
+echo "╔══════════════════════════════════════════════════════╗"
+echo "║   DarCloud MeshTalk OS — Launcher Ready             ║"
+echo "║                                                      ║"
+echo "║   Home Screen:                                       ║"
+echo "║     • Omar AI Dashboard  (localhost:9090)            ║"
+echo "║     • DarCloud Dashboard (darcloud.host/dashboard)   ║"
+echo "║     • Empire Admin       (darcloud.host/admin)       ║"
+echo "║     • Revenue Monitor    (revenue/dashboard)         ║"
+echo "║     • Mesh Network       (localhost:8080)            ║"
+echo "║     • WiFi Gateway       (localhost:8888)            ║"
+echo "║     • API Docs           (darcloud.host/docs)        ║"
+echo "║     • 5G Status          (localhost:9090/api/metrics) ║"
+echo "║                                                      ║"
+echo "║   Status Widget: Always-on notification bar          ║"
+echo "║   Boot Message: Bismillah + system status            ║"
+echo "╚══════════════════════════════════════════════════════╝"
