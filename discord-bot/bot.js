@@ -3,6 +3,7 @@
 // Full system integration — 18 slash commands
 // Autonomous mode: auto-reconnect, heartbeat, crash recovery
 // ==========================================================
+require('dotenv').config();
 const { Client, GatewayIntentBits, EmbedBuilder } = require("discord.js");
 const { readFileSync, appendFileSync } = require("fs");
 const { resolve } = require("path");

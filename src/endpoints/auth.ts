@@ -22,7 +22,14 @@ function checkRateLimit(ip: string): { allowed: boolean; retryAfter?: number } {
 }
 
 // ── JWT helpers using Web Crypto HMAC-SHA256 ──
-const JWT_SECRET_FALLBACK = "darcloud-jwt-secret-2026-quranchain";
+// JWT_SECRET MUST be set as a Cloudflare Worker secret: wrangler secret put JWT_SECRET
+
+function getJwtSecret(env: { JWT_SECRET?: string }): string {
+  if (!env.JWT_SECRET) {
+    throw new Error("JWT_SECRET environment variable is not configured");
+  }
+  return env.JWT_SECRET;
+}
 
 function base64url(data: Uint8Array): string {
   return btoa(String.fromCharCode(...data))
@@ -102,7 +109,7 @@ function getCookieToken(cookieHeader: string | undefined): string | null {
 
 // Auth middleware for protected routes — reads Bearer token OR SSO cookie
 async function requireAuth(c: { req: { header: (name: string) => string | undefined }; env: { JWT_SECRET?: string }; json: (data: unknown, status?: number) => Response; set: (key: string, value: unknown) => void }): Promise<Response | null> {
-  const secret = c.env.JWT_SECRET || JWT_SECRET_FALLBACK;
+  const secret = getJwtSecret(c.env);
   let token: string | null = null;
 
   // 1. Try Authorization header
@@ -164,25 +171,43 @@ async function ensureTables(db: D1Database) {
   ]);
 }
 
-// Simple password hashing using Web Crypto (SHA-256 + salt)
+// Password hashing using Web Crypto PBKDF2 (100K iterations)
 async function hashPassword(password: string): Promise<string> {
   const salt = crypto.getRandomValues(new Uint8Array(16));
   const saltHex = [...salt].map((b) => b.toString(16).padStart(2, "0")).join("");
   const encoder = new TextEncoder();
-  const data = encoder.encode(saltHex + password);
-  const hash = await crypto.subtle.digest("SHA-256", data);
-  const hashHex = [...new Uint8Array(hash)]
+  const keyMaterial = await crypto.subtle.importKey("raw", encoder.encode(password), "PBKDF2", false, ["deriveBits"]);
+  const hashBuf = await crypto.subtle.deriveBits(
+    { name: "PBKDF2", salt, iterations: 100000, hash: "SHA-256" },
+    keyMaterial, 256
+  );
+  const hashHex = [...new Uint8Array(hashBuf)]
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
-  return `${saltHex}:${hashHex}`;
+  return `pbkdf2:${saltHex}:${hashHex}`;
 }
 
 async function verifyPassword(
   password: string,
   stored: string,
 ): Promise<boolean> {
-  const [salt, hash] = stored.split(":");
   const encoder = new TextEncoder();
+  if (stored.startsWith("pbkdf2:")) {
+    // New PBKDF2 format: pbkdf2:saltHex:hashHex
+    const [, saltHex, hash] = stored.split(":");
+    const salt = new Uint8Array(saltHex.match(/.{2}/g)!.map((b) => parseInt(b, 16)));
+    const keyMaterial = await crypto.subtle.importKey("raw", encoder.encode(password), "PBKDF2", false, ["deriveBits"]);
+    const hashBuf = await crypto.subtle.deriveBits(
+      { name: "PBKDF2", salt, iterations: 100000, hash: "SHA-256" },
+      keyMaterial, 256
+    );
+    const computedHex = [...new Uint8Array(hashBuf)]
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+    return computedHex === hash;
+  }
+  // Legacy SHA-256 format: saltHex:hashHex
+  const [salt, hash] = stored.split(":");
   const data = encoder.encode(salt + password);
   const computed = await crypto.subtle.digest("SHA-256", data);
   const computedHex = [...new Uint8Array(computed)]
@@ -251,7 +276,7 @@ auth.post("/auth/signup", async (c) => {
       .run();
 
     // Generate JWT token
-    const secret = c.env.JWT_SECRET || JWT_SECRET_FALLBACK;
+    const secret = getJwtSecret(c.env);
     const token = await signJWT({ email: email.toLowerCase(), name, plan: validPlan, role: "user" }, secret);
 
     const response = c.json({
@@ -308,7 +333,7 @@ auth.post("/auth/login", async (c) => {
     }
 
     // Generate JWT token
-    const secret = c.env.JWT_SECRET || JWT_SECRET_FALLBACK;
+    const secret = getJwtSecret(c.env);
     const token = await signJWT(
       { email: user.email, name: user.name, plan: user.plan, role: "user", userId: user.id },
       secret
@@ -528,7 +553,7 @@ auth.get("/auth/me", async (c) => {
 // GET /api/admin/stats — Admin dashboard stats (protected)
 auth.get("/admin/stats", async (c) => {
   const start = Date.now();
-  const secret = c.env.JWT_SECRET || JWT_SECRET_FALLBACK;
+  const secret = getJwtSecret(c.env);
   let token: string | null = null;
   const authHeader = c.req.header("Authorization");
   if (authHeader?.startsWith("Bearer ")) {
@@ -599,7 +624,7 @@ auth.post("/auth/logout", (c) => {
 
 // GET /api/auth/session — Check SSO session from cookie (no auth header needed)
 auth.get("/auth/session", async (c) => {
-  const secret = c.env.JWT_SECRET || JWT_SECRET_FALLBACK;
+  const secret = getJwtSecret(c.env);
   const token = getCookieToken(c.req.header("Cookie"));
   if (!token) {
     return c.json({ authenticated: false });
@@ -616,4 +641,4 @@ auth.get("/auth/session", async (c) => {
   });
 });
 
-export { auth, requireAuth, verifyJWT, JWT_SECRET_FALLBACK };
+export { auth, requireAuth, verifyJWT, getJwtSecret };

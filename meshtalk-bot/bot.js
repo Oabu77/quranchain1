@@ -3,6 +3,7 @@
 // Encrypted messaging · Voice channels · File sharing
 // Built on FungiMesh P2P backbone
 // ==========================================================
+require('dotenv').config();
 const { Client, GatewayIntentBits, EmbedBuilder } = require("discord.js");
 const { readFileSync, appendFileSync } = require("fs");
 const { resolve } = require("path");

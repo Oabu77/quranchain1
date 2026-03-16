@@ -47,6 +47,16 @@ const commands = [
   new SlashCommandBuilder().setName("leaderboard").setDescription("Top 10 QRN holders"),
   new SlashCommandBuilder().setName("transactions").setDescription("View your transaction history"),
 
+  // ── Trading ──
+  new SlashCommandBuilder().setName("trade").setDescription("💱 Trade QRN ↔ USD on QuranChain DEX")
+    .addStringOption(o => o.setName("direction").setDescription("Buy or sell QRN").setRequired(true)
+      .addChoices(
+        { name: "Sell QRN → USD", value: "sell" },
+        { name: "Buy QRN ← USD", value: "buy" },
+      ))
+    .addNumberOption(o => o.setName("amount").setDescription("Amount to trade").setRequired(true).setMinValue(0.01)),
+  new SlashCommandBuilder().setName("trades").setDescription("📊 View your QRN ↔ USD trade history"),
+
   // ── Blockchain ──
   new SlashCommandBuilder().setName("mine").setDescription("Mine a block on any of the 47 chains and earn QRN")
     .addStringOption(o => o.setName("chain").setDescription("Chain to mine on (default: QuranChain)").setRequired(false)

@@ -2,6 +2,7 @@
 // DarCloud AI Fleet™ Bot — 66 AI Agents + 12 GPT-4o Assistants
 // Full fleet management, benchmarking, and monitoring
 // ==========================================================
+require('dotenv').config();
 const { Client, GatewayIntentBits, EmbedBuilder } = require("discord.js");
 const { readFileSync, appendFileSync } = require("fs");
 const { resolve } = require("path");
@@ -10,6 +11,8 @@ const { MeshRouter } = require('../shared/mesh-router');
 const openaiAgents = require('../shared/openai-agents');
 const discordPremium = require('../shared/discord-premium');
 const stripeIntegration = require('../shared/stripe-integration');
+const onboardingDb = require('../shared/onboarding-db');
+const onboardingEngine = require('../shared/onboarding-engine');
 
 try {
   const env = readFileSync(resolve(__dirname, ".env"), "utf8");
@@ -126,8 +129,23 @@ client.on("interactionCreate", async (i) => {
       return;
     } catch (err) { if (!i.replied) await i.editReply({ content: '❌ ' + err.message }).catch(() => {}); return; }
   }
+
+  // Handle onboarding interactions
+  if (i.isModalSubmit() || (i.isButton() && i.customId.startsWith('onboard')) || i.isStringSelectMenu()) {
+    try { const handled = await onboardingEngine.handleOnboardingInteraction(i, 'aifleet'); if (handled) return; }
+    catch (err) { console.error(`Onboarding error: ${err.message}`); }
+  }
+
   if (!i.isChatInputCommand()) return;
   const cmd = i.commandName;
+
+  onboardingDb.getOrCreateMember(i.user.id, i.user.tag || i.user.username);
+  const onboardCmds = ['onboard','dashboard','referral','services','subscribe'];
+  if (onboardCmds.includes(cmd)) {
+    try { await onboardingEngine.handleOnboardingCommand(i, 'aifleet'); } catch (err) { await i.reply({ content: `❌ ${err.message}`, ephemeral: true }).catch(() => {}); }
+    return;
+  }
+
   try {
     if (cmd === "ai-fleet") {
       const data = await apiFetch("/api/ai/fleet");

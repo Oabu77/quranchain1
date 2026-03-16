@@ -4,5 +4,9 @@
   "description": "DarCloud AI Fleet™ Bot — 66 AI agents, 12 GPT-4o assistants",
   "main": "bot.js",
   "scripts": { "start": "node bot.js", "register": "node register-commands.js" },
-  "dependencies": { "discord.js": "^14.18.0" }
+  "dependencies": {
+    "better-sqlite3": "^12.6.2",
+    "discord.js": "^14.18.0",
+    "dotenv": "^16.4.7"
+  }
 }

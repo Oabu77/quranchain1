@@ -22,7 +22,7 @@ const API_BASE = process.env.API_BASE || "http://localhost:8787";
 if (!DISCORD_TOKEN) { console.error("Missing DISCORD_TOKEN"); process.exit(1); }
 
 // ── Load Modules ──────────────────────────────────────────
-const { getOrCreateWallet, addBalance, transfer, canDoAction, stmts, generateTxHash } = require("./database");
+const { getOrCreateWallet, addBalance, transfer, canDoAction, stmts, generateTxHash, tradeQrnForUsd, tradeUsdForQrn, getUsdBalance, QRN_TO_USD_RATE, TRADE_FEE_PERCENT } = require("./database");
 const { mineBlock, getChainStats, LIVE_CHAINS, VALIDATORS, REVENUE_SPLIT, MAX_SUPPLY } = require("./blockchain");
 const { startQuiz, answerQuiz, startScramble, answerScramble, claimDaily, openTreasure, activeQuizzes, activeScrambles } = require("./games");
 
@@ -478,12 +478,89 @@ const handlers = {
     return interaction.editReply({ embeds: [embed] });
   },
 
+  // ─── Trade QRN ↔ USD ─────────────────────────
+  async trade(interaction) {
+    const direction = interaction.options.getString("direction");
+    const amount = interaction.options.getNumber("amount");
+
+    getOrCreateWallet(interaction.user.id, interaction.user.username);
+
+    if (direction === "sell") {
+      // QRN → USD
+      const result = tradeQrnForUsd(interaction.user.id, interaction.user.username, amount);
+      if (!result.success) {
+        return interaction.editReply({ embeds: [qcEmbed("❌ Trade Failed").setDescription(result.error).setColor(0xef4444)] });
+      }
+      const usdBal = getUsdBalance(interaction.user.id);
+      const wallet = stmts.getWallet.get(interaction.user.id);
+      const embed = qcEmbed("💱 Trade Executed — QRN → USD");
+      embed.setColor(0x22c55e);
+      embed.addFields(
+        { name: "Sold", value: `**${result.qrnAmount.toFixed(2)} QRN**`, inline: true },
+        { name: "Received", value: `**$${result.usdAmount.toFixed(2)} USD**`, inline: true },
+        { name: "Rate", value: `1 QRN = $${QRN_TO_USD_RATE} USD`, inline: true },
+        { name: "Fee (0.3%)", value: `${result.feeQrn.toFixed(4)} QRN`, inline: true },
+        { name: "QRN Balance", value: `${wallet.balance.toFixed(2)} QRN`, inline: true },
+        { name: "USD Balance", value: `$${usdBal.balance.toFixed(2)}`, inline: true },
+        { name: "TX Hash", value: `\`${result.txHash.slice(0, 18)}...\`` },
+      );
+      return interaction.editReply({ embeds: [embed] });
+
+    } else {
+      // USD → QRN
+      const result = tradeUsdForQrn(interaction.user.id, interaction.user.username, amount);
+      if (!result.success) {
+        return interaction.editReply({ embeds: [qcEmbed("❌ Trade Failed").setDescription(result.error).setColor(0xef4444)] });
+      }
+      const usdBal = getUsdBalance(interaction.user.id);
+      const wallet = stmts.getWallet.get(interaction.user.id);
+      const embed = qcEmbed("💱 Trade Executed — USD → QRN");
+      embed.setColor(0x22c55e);
+      embed.addFields(
+        { name: "Sold", value: `**$${result.usdAmount.toFixed(2)} USD**`, inline: true },
+        { name: "Received", value: `**${result.qrnAmount.toFixed(2)} QRN**`, inline: true },
+        { name: "Rate", value: `1 QRN = $${QRN_TO_USD_RATE} USD`, inline: true },
+        { name: "Fee (0.3%)", value: `${result.feeQrn.toFixed(4)} QRN`, inline: true },
+        { name: "QRN Balance", value: `${wallet.balance.toFixed(2)} QRN`, inline: true },
+        { name: "USD Balance", value: `$${usdBal.balance.toFixed(2)}`, inline: true },
+        { name: "TX Hash", value: `\`${result.txHash.slice(0, 18)}...\`` },
+      );
+      return interaction.editReply({ embeds: [embed] });
+    }
+  },
+
+  // ─── Trade History ──────────────────────────
+  async trades(interaction) {
+    const userId = interaction.user.id;
+    getOrCreateWallet(userId, interaction.user.username);
+    const trades = stmts.getUserTrades.all(userId);
+    const usdBal = getUsdBalance(userId);
+    const wallet = stmts.getWallet.get(userId);
+
+    const embed = qcEmbed("📊 Trade History — QRN ↔ USD");
+    embed.addFields(
+      { name: "QRN Balance", value: `${wallet.balance.toFixed(2)} QRN`, inline: true },
+      { name: "USD Balance", value: `$${usdBal.balance.toFixed(2)}`, inline: true },
+      { name: "Rate", value: `1 QRN = $${QRN_TO_USD_RATE}`, inline: true },
+    );
+    if (trades.length === 0) {
+      embed.setDescription("No trades yet. Use `/trade` to swap QRN ↔ USD!");
+    } else {
+      const list = trades.map(t => {
+        const icon = t.direction === "QRN_TO_USD" ? "📤" : "📥";
+        return `${icon} **${t.qrn_amount.toFixed(2)} QRN** ↔ **$${t.usd_amount.toFixed(2)} USD** — ${t.created_at}`;
+      }).join("\n");
+      embed.addFields({ name: "Recent Trades", value: truncate(list) });
+    }
+    return interaction.editReply({ embeds: [embed] });
+  },
+
   // ─── Help ───────────────────────────────────
   async help(interaction) {
     const embed = qcEmbed("📖 QuranChain Bot — Commands");
     embed.setDescription("**بِسْمِ اللَّهِ الرَّحْمَنِ الرَّحِيمِ**\n\nQuranChain: The Islamic Blockchain Network — 47 chains, QRN economy, NFT marketplace, smart contracts.");
     embed.addFields(
-      { name: "💰 Economy", value: "`/wallet` — View your QRN wallet\n`/send` — Send QRN to someone\n`/daily` — Claim daily reward (streak bonus!)\n`/leaderboard` — Top 10 holders\n`/transactions` — Your TX history" },
+      { name: "💰 Economy", value: "`/wallet` — View your QRN wallet\n`/send` — Send QRN to someone\n`/trade` — Swap QRN ↔ USD\n`/trades` — Trade history\n`/daily` — Claim daily reward (streak bonus!)\n`/leaderboard` — Top 10 holders\n`/transactions` — Your TX history" },
       { name: "⛏️ Blockchain", value: "`/mine` — Mine a block on any chain\n`/chain` — Network statistics\n`/validators` — View 14 validators\n`/chains` — All 47 live networks\n`/gas` — Gas toll revenue" },
       { name: "📜 Smart Contracts", value: "`/contract-deploy` — Deploy a smart contract\n`/my-contracts` — View your contracts" },
       { name: "🎨 NFT Trading", value: "`/nft-mint` — Mint an NFT on your contract\n`/nft-buy` — Buy an NFT from the marketplace\n`/nft-sell` — List your NFT for sale\n`/nft-transfer` — Transfer an NFT to someone\n`/nft-gallery` — View NFT collection\n`/nft-market` — Browse the marketplace" },

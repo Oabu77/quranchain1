@@ -9,7 +9,7 @@ const path = require("path");
 let OpenAI;
 try { OpenAI = require("openai"); } catch { OpenAI = null; }
 
-const WORKSPACE = "/workspaces/quranchain1";
+const WORKSPACE = process.env.WORKSPACE || path.resolve(__dirname, "..");
 const FOUNDER_ID = process.env.FOUNDER_DISCORD_ID || ""; // Set in .env
 
 // ── Empire Data ─────────────────────────────────────────
@@ -105,7 +105,7 @@ function safeExec(cmd, timeout = 20000) {
 
 // ── Founder Auth Check ──────────────────────────────────
 function isFounder(userId) {
-  if (!FOUNDER_ID) return true; // If not set, allow (dev mode)
+  if (!FOUNDER_ID) return false; // Deny all if FOUNDER_DISCORD_ID not configured
   return userId === FOUNDER_ID;
 }
 

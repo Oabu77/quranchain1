@@ -83,6 +83,27 @@ db.exec(`
     created_at    TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
+  CREATE TABLE IF NOT EXISTS usd_balances (
+    user_id       TEXT PRIMARY KEY,
+    balance       REAL NOT NULL DEFAULT 0,
+    total_bought  REAL NOT NULL DEFAULT 0,
+    total_sold    REAL NOT NULL DEFAULT 0,
+    updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS trades (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    tx_hash       TEXT NOT NULL,
+    user_id       TEXT NOT NULL,
+    direction     TEXT NOT NULL,
+    qrn_amount    REAL NOT NULL,
+    usd_amount    REAL NOT NULL,
+    rate          REAL NOT NULL,
+    fee_qrn       REAL NOT NULL DEFAULT 0,
+    created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_trades_user ON trades(user_id);
   CREATE INDEX IF NOT EXISTS idx_tx_hash ON transactions(tx_hash);
   CREATE INDEX IF NOT EXISTS idx_tx_to ON transactions(to_user);
   CREATE INDEX IF NOT EXISTS idx_tx_from ON transactions(from_user);
@@ -127,6 +148,13 @@ const stmts = {
   insertScore: db.prepare("INSERT INTO game_scores (user_id, game, score, qrn_earned) VALUES (?, ?, ?, ?)"),
   topScores: db.prepare("SELECT user_id, SUM(score) as total_score, SUM(qrn_earned) as total_qrn, COUNT(*) as games_played FROM game_scores WHERE game = ? GROUP BY user_id ORDER BY total_score DESC LIMIT 10"),
   userStats: db.prepare("SELECT game, SUM(score) as total_score, SUM(qrn_earned) as total_qrn, COUNT(*) as games_played FROM game_scores WHERE user_id = ? GROUP BY game"),
+
+  // ── USD Trading ──
+  getUsdBalance: db.prepare("SELECT * FROM usd_balances WHERE user_id = ?"),
+  createUsdBalance: db.prepare("INSERT OR IGNORE INTO usd_balances (user_id, balance) VALUES (?, 0)"),
+  updateUsd: db.prepare("UPDATE usd_balances SET balance = balance + ?, total_bought = total_bought + MAX(0, ?), total_sold = total_sold + MAX(0, -?), updated_at = datetime('now') WHERE user_id = ?"),
+  insertTrade: db.prepare("INSERT INTO trades (tx_hash, user_id, direction, qrn_amount, usd_amount, rate, fee_qrn) VALUES (?, ?, ?, ?, ?, ?, ?)"),
+  getUserTrades: db.prepare("SELECT * FROM trades WHERE user_id = ? ORDER BY created_at DESC LIMIT 15"),
 };
 
 // ── Database API ──────────────────────────────────────────
@@ -173,7 +201,62 @@ function transfer(fromId, toId, toUsername, amount, memo) {
   return { success: true, txHash };
 }
 
+// QRN/USD exchange rate and fee
+const QRN_TO_USD_RATE = 0.47; // 1 QRN = $0.47 USD
+const TRADE_FEE_PERCENT = 0.003; // 0.3% fee
+
+function tradeQrnForUsd(userId, username, qrnAmount) {
+  if (qrnAmount <= 0) return { success: false, error: "Amount must be positive." };
+  const wallet = getOrCreateWallet(userId, username);
+  if (wallet.balance < qrnAmount) return { success: false, error: `Insufficient QRN balance. You have **${wallet.balance.toFixed(2)} QRN**.` };
+
+  const feeQrn = qrnAmount * TRADE_FEE_PERCENT;
+  const netQrn = qrnAmount - feeQrn;
+  const usdAmount = netQrn * QRN_TO_USD_RATE;
+  const txHash = generateTxHash();
+
+  const doTrade = db.transaction(() => {
+    stmts.updateBalance.run(-qrnAmount, -qrnAmount, -qrnAmount, userId);
+    stmts.createUsdBalance.run(userId);
+    stmts.updateUsd.run(usdAmount, usdAmount, usdAmount, userId);
+    stmts.insertTrade.run(txHash, userId, "QRN_TO_USD", qrnAmount, usdAmount, QRN_TO_USD_RATE, feeQrn);
+    stmts.insertTx.run(txHash, userId, "QuranChain-DEX", qrnAmount, "trade_sell", "QuranChain", `Sold ${qrnAmount.toFixed(2)} QRN → $${usdAmount.toFixed(2)} USD`, null);
+  });
+  doTrade();
+
+  return { success: true, txHash, qrnAmount, usdAmount, feeQrn, rate: QRN_TO_USD_RATE };
+}
+
+function tradeUsdForQrn(userId, username, usdAmount) {
+  if (usdAmount <= 0) return { success: false, error: "Amount must be positive." };
+  getOrCreateWallet(userId, username);
+  stmts.createUsdBalance.run(userId);
+  const usdBal = stmts.getUsdBalance.get(userId);
+  if (!usdBal || usdBal.balance < usdAmount) return { success: false, error: `Insufficient USD balance. You have **$${(usdBal?.balance || 0).toFixed(2)} USD**.` };
+
+  const qrnAmount = usdAmount / QRN_TO_USD_RATE;
+  const feeQrn = qrnAmount * TRADE_FEE_PERCENT;
+  const netQrn = qrnAmount - feeQrn;
+  const txHash = generateTxHash();
+
+  const doTrade = db.transaction(() => {
+    stmts.updateUsd.run(-usdAmount, -usdAmount, -usdAmount, userId);
+    stmts.updateBalance.run(netQrn, netQrn, netQrn, userId);
+    stmts.insertTrade.run(txHash, userId, "USD_TO_QRN", netQrn, usdAmount, QRN_TO_USD_RATE, feeQrn);
+    stmts.insertTx.run(txHash, "QuranChain-DEX", userId, netQrn, "trade_buy", "QuranChain", `Bought ${netQrn.toFixed(2)} QRN ← $${usdAmount.toFixed(2)} USD`, null);
+  });
+  doTrade();
+
+  return { success: true, txHash, qrnAmount: netQrn, usdAmount, feeQrn, rate: QRN_TO_USD_RATE };
+}
+
+function getUsdBalance(userId) {
+  stmts.createUsdBalance.run(userId);
+  return stmts.getUsdBalance.get(userId);
+}
+
 function canDoAction(wallet, field, cooldownMinutes) {
+
   if (!wallet[field]) return true;
   const last = new Date(wallet[field] + "Z").getTime();
   const remaining = cooldownMinutes * 60 * 1000 - (Date.now() - last);
@@ -186,4 +269,4 @@ function generateTxHash() {
   return "0x" + crypto.randomBytes(32).toString("hex");
 }
 
-module.exports = { db, stmts, getOrCreateWallet, addBalance, transfer, canDoAction, generateTxHash };
+module.exports = { db, stmts, getOrCreateWallet, addBalance, transfer, canDoAction, generateTxHash, tradeQrnForUsd, tradeUsdForQrn, getUsdBalance, QRN_TO_USD_RATE, TRADE_FEE_PERCENT };

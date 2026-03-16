@@ -3,6 +3,7 @@
 // 47 chains · 30% immutable founder royalty · 5 revenue streams
 // Integrated with QuranChain blockchain & shared onboarding
 // ==========================================================
+require('dotenv').config();
 const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
 const { readFileSync, appendFileSync } = require("fs");
 const { resolve } = require("path");

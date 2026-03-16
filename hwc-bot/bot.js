@@ -2,6 +2,7 @@
 // Halal Wealth Club™ Bot — Islamic Banking & Finance
 // Zero-riba · Shariah-compliant · 31 USA markets
 // ==========================================================
+require('dotenv').config();
 const { Client, GatewayIntentBits, EmbedBuilder } = require("discord.js");
 const { readFileSync, appendFileSync } = require("fs");
 const { resolve } = require("path");

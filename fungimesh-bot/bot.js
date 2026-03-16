@@ -2,6 +2,7 @@
 // FungiMesh™ Discord Bot — Bio-Inspired Mesh Network
 // 340,000 nodes · 6 continents · Quantum encryption
 // ==========================================================
+require('dotenv').config();
 const { Client, GatewayIntentBits, EmbedBuilder } = require("discord.js");
 const { readFileSync, appendFileSync } = require("fs");
 const { resolve } = require("path");

@@ -7,7 +7,7 @@ const Database = require("better-sqlite3");
 const crypto = require("crypto");
 const { resolve } = require("path");
 
-const DB_PATH = resolve(__dirname, "..", "quranchain-bot", "quranchain.db");
+const DB_PATH = process.env.DB_PATH || resolve(__dirname, "..", "quranchain-bot", "quranchain.db");
 const db = new Database(DB_PATH);
 db.pragma("journal_mode = WAL");
 

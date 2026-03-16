@@ -2,6 +2,7 @@
 // DarLaw™ Bot — Legal AI with 11 Specialized Agents
 // IP protection · Trademark · Patent · Compliance · Shariah
 // ==========================================================
+require('dotenv').config();
 const { Client, GatewayIntentBits, EmbedBuilder } = require("discord.js");
 const { readFileSync, appendFileSync } = require("fs");
 const { resolve } = require("path");
@@ -10,6 +11,8 @@ const { MeshRouter } = require('../shared/mesh-router');
 const openaiAgents = require('../shared/openai-agents');
 const discordPremium = require('../shared/discord-premium');
 const stripeIntegration = require('../shared/stripe-integration');
+const onboardingDb = require('../shared/onboarding-db');
+const onboardingEngine = require('../shared/onboarding-engine');
 
 try {
   const env = readFileSync(resolve(__dirname, ".env"), "utf8");
@@ -91,8 +94,23 @@ client.on("interactionCreate", async (i) => {
       return;
     } catch (err) { if (!i.replied) await i.editReply({ content: '❌ ' + err.message }).catch(() => {}); return; }
   }
+
+  // Handle onboarding interactions
+  if (i.isModalSubmit() || (i.isButton() && i.customId.startsWith('onboard')) || i.isStringSelectMenu()) {
+    try { const handled = await onboardingEngine.handleOnboardingInteraction(i, 'darlaw'); if (handled) return; }
+    catch (err) { console.error(`Onboarding error: ${err.message}`); }
+  }
+
   if (!i.isChatInputCommand()) return;
   const cmd = i.commandName;
+
+  onboardingDb.getOrCreateMember(i.user.id, i.user.tag || i.user.username);
+  const onboardCmds = ['onboard','dashboard','referral','services','subscribe'];
+  if (onboardCmds.includes(cmd)) {
+    try { await onboardingEngine.handleOnboardingCommand(i, 'darlaw'); } catch (err) { await i.reply({ content: `❌ ${err.message}`, ephemeral: true }).catch(() => {}); }
+    return;
+  }
+
   try {
     if (cmd === "law-agents") {
       const e = lawEmbed().setTitle("⚖️ DarLaw™ Legal AI Agents");
