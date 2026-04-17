@@ -25,6 +25,8 @@ import {
   checkoutResultPage,
 } from "./pages";
 import { handleSubdomain } from "./subdomainRouter";
+import { messagingRouter } from "./endpoints/messaging/router";
+import { MESSAGING_PAGE } from "./components/MessagingSystem";
 
 // Start a Hono app
 const app = new Hono<{ Bindings: Env }>();
@@ -493,6 +495,10 @@ openapi.route("/mesh", meshRouter);
 openapi.route("/ai", aiRouter);
 openapi.route("/minecraft", minecraftRouter);
 openapi.route("/multipass", multipassRouter);
+
+// Messaging system (DarCloud inter-user messaging)
+app.get("/messages", (c) => c.html(MESSAGING_PAGE));
+app.route("/messaging", messagingRouter);
 
 // Telecom / ISP routes (DarTelecom MeshTalk 5G)
 app.route("/telecom", telecomRouter);

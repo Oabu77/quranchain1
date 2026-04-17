@@ -641,4 +641,20 @@ auth.get("/auth/session", async (c) => {
   });
 });
 
+// ── User lookup by email (auth required) — for messaging ──
+auth.get("/lookup", async (c) => {
+  const authResp = await requireAuth(c as never);
+  if (authResp) return authResp;
+  const db = c.env.DB;
+  const email = c.req.query("email");
+  if (!email) return c.json({ error: "email parameter required" }, 400);
+
+  const user = await db.prepare(
+    "SELECT id, name, email, plan FROM users WHERE email = ?"
+  ).bind(email).first();
+
+  if (!user) return c.json({ error: "User not found", user: null }, 404);
+  return c.json({ user: { id: user.id, name: user.name, email: user.email, plan: user.plan } });
+});
+
 export { auth, requireAuth, verifyJWT, getJwtSecret };
