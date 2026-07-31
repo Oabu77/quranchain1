@@ -73,6 +73,15 @@ ${body}
 </html>`;
 }
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 export const SIGNUP_PAGE = pageShell("Create Account", `
 <div class="card">
   <p class="bismillah">بِسْمِ اللَّهِ الرَّحْمَنِ الرَّحِيمِ</p>
@@ -342,13 +351,14 @@ async function handleCheckout(e) {
 // ── Checkout Success/Cancel Pages ──
 export function checkoutResultPage(status: string, sessionId?: string): string {
   if (status === "success") {
+    const safeSessionId = escapeHtml(sessionId || "N/A");
     return pageShell("Payment Success", `
 <div class="card" style="max-width:500px;text-align:center">
   <div style="font-size:4rem;margin-bottom:1rem">✅</div>
   <h1>Payment <span>Successful!</span></h1>
   <p class="sub">Alhamdulillah — your subscription is now active.</p>
   <p style="color:var(--muted);font-size:.9rem;margin:1rem 0">
-    Session: <code>${sessionId || "N/A"}</code>
+    Session: <code>${safeSessionId}</code>
   </p>
   <div style="background:var(--s2);border:1px solid var(--bdr);border-radius:12px;padding:1.25rem;margin:1.5rem 0">
     <p style="font-size:.9rem;color:var(--muted);margin:0">Your services are being provisioned. You'll receive a confirmation email shortly.</p>
@@ -548,6 +558,14 @@ export const ADMIN_PAGE = pageShell("Admin Panel", `
 </div>
 <script>
 (async function() {
+  function esc(v) {
+    return String(v ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
   const token = localStorage.getItem('darcloud_token');
   if (!token) { window.location.href = '/login'; return; }
   try {
@@ -565,15 +583,15 @@ export const ADMIN_PAGE = pageShell("Admin Panel", `
     const pb = document.getElementById('planBreakdown');
     pb.innerHTML = (d.plan_breakdown || []).map(p =>
       '<span style="display:inline-block;background:var(--s2);border:1px solid var(--bdr);border-radius:6px;padding:.4rem .8rem;margin:.25rem;font-size:.85rem">' +
-      '<strong style="color:var(--cyan)">' + p.plan + '</strong>: ' + p.count + '</span>'
+      '<strong style="color:var(--cyan)">' + esc(p.plan) + '</strong>: ' + Number(p.count || 0) + '</span>'
     ).join('');
     const tb = document.getElementById('usersBody');
     tb.innerHTML = (d.recent_users || []).map(u =>
       '<tr style="border-bottom:1px solid var(--bdr)">' +
-      '<td style="padding:.5rem">' + u.email + '</td>' +
-      '<td style="padding:.5rem">' + u.name + '</td>' +
-      '<td style="padding:.5rem"><span style="background:rgba(0,212,255,.1);color:var(--cyan);padding:.15rem .5rem;border-radius:4px;font-size:.8rem">' + u.plan + '</span></td>' +
-      '<td style="padding:.5rem;color:var(--muted)">' + (u.created_at || '').substring(0,10) + '</td></tr>'
+      '<td style="padding:.5rem">' + esc(u.email) + '</td>' +
+      '<td style="padding:.5rem">' + esc(u.name) + '</td>' +
+      '<td style="padding:.5rem"><span style="background:rgba(0,212,255,.1);color:var(--cyan);padding:.15rem .5rem;border-radius:4px;font-size:.8rem">' + esc(u.plan) + '</span></td>' +
+      '<td style="padding:.5rem;color:var(--muted)">' + esc((u.created_at || '').substring(0,10)) + '</td></tr>'
     ).join('');
     document.getElementById('adminContent').style.display = 'block';
   } catch(e) {

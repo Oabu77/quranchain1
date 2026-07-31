@@ -31,6 +31,17 @@ import { MESSAGING_PAGE } from "./components/MessagingSystem";
 // Start a Hono app
 const app = new Hono<{ Bindings: Env }>();
 
+function isAdminUser(user: { email?: string; role?: string }, env: { ADMIN_EMAILS?: string }): boolean {
+  if (user.role === "admin") return true;
+  const email = (user.email || "").toLowerCase();
+  if (!email) return false;
+  const adminEmails = (env.ADMIN_EMAILS || "")
+    .split(",")
+    .map((v) => v.trim().toLowerCase())
+    .filter(Boolean);
+  return adminEmails.includes(email);
+}
+
 // ── Subdomain routing — intercept *.darcloud.host/net before other routes ──
 app.use("*", async (c, next) => {
   const response = await handleSubdomain(c.req.raw);
@@ -315,11 +326,27 @@ app.post("/api/checkout/session", async (c) => {
 // ── Customer Portal (manage subscriptions) ──
 app.post("/api/stripe/portal", async (c) => {
   try {
+    const authError = await requireAuth(c as any);
+    if (authError) return authError;
+    const user = c.get("user") as { email?: string };
     const { customer_id } = await c.req.json();
     const stripeKey = c.env.STRIPE_SECRET_KEY;
     if (!stripeKey || !customer_id) {
       return c.json({ error: "Missing customer or configuration" }, 400);
     }
+    if (!user?.email) {
+      return c.json({ error: "Invalid authenticated user" }, 401);
+    }
+
+    const db = c.env.DB;
+    const account = await db
+      .prepare("SELECT darpay_customer_id FROM users WHERE email = ?")
+      .bind(user.email.toLowerCase())
+      .first<{ darpay_customer_id: string | null }>();
+    if (!account?.darpay_customer_id || account.darpay_customer_id !== customer_id) {
+      return c.json({ error: "Unauthorized customer portal access" }, 403);
+    }
+
     const params = new URLSearchParams();
     params.append("customer", customer_id);
     params.append("return_url", "https://darcloud.host/dashboard");
@@ -410,6 +437,20 @@ app.get("/api/onboarding/status/:discordId", async (c) => {
   } catch {
     return c.json({ success: false, member: null });
   }
+});
+
+// ── Contracts write operations require authenticated admin user ──
+app.use("/api/contracts/*", async (c, next) => {
+  if (!["POST", "PUT", "PATCH", "DELETE"].includes(c.req.method)) {
+    return next();
+  }
+  const authError = await requireAuth(c as any);
+  if (authError) return authError;
+  const user = c.get("user") as { email?: string; role?: string };
+  if (!isAdminUser(user, c.env)) {
+    return c.json({ error: "Admin access required" }, 403);
+  }
+  await next();
 });
 
 // ── Inter-Company Contracts, DarLaw, & IP Protection ──

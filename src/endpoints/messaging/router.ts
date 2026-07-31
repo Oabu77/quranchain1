@@ -3,6 +3,12 @@ import { requireAuth } from "../auth";
 
 const messagingRouter = new Hono<{ Bindings: Env }>();
 
+function getAuthUserId(payload: { userId?: number; sub?: number }): number | null {
+  const raw = payload.userId ?? payload.sub;
+  const parsed = typeof raw === "number" ? raw : Number(raw);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 // ── Auto-migrate messaging tables ──
 async function ensureMessagingTables(db: D1Database) {
   await db.batch([
@@ -41,7 +47,9 @@ async function ensureMessagingTables(db: D1Database) {
 messagingRouter.get("/conversations", async (c) => {
   const authResp = await requireAuth(c as never);
   if (authResp) return authResp;
-  const user = c.get("user") as { sub: number; email: string };
+  const userPayload = c.get("user") as { userId?: number; sub?: number; email?: string };
+  const userId = getAuthUserId(userPayload);
+  if (userId === null) return c.json({ error: "Invalid authenticated user" }, 401);
   const db = c.env.DB;
   await ensureMessagingTables(db);
 
@@ -55,7 +63,7 @@ messagingRouter.get("/conversations", async (c) => {
     JOIN conversation_participants cp ON cp.conversation_id = c.id
     WHERE cp.user_id = ?
     ORDER BY c.updated_at DESC
-  `).bind(user.sub).all();
+  `).bind(userId).all();
 
   return c.json({ success: true, conversations: convos.results || [] });
 });
@@ -64,7 +72,9 @@ messagingRouter.get("/conversations", async (c) => {
 messagingRouter.post("/conversations", async (c) => {
   const authResp = await requireAuth(c as never);
   if (authResp) return authResp;
-  const user = c.get("user") as { sub: number };
+  const userPayload = c.get("user") as { userId?: number; sub?: number };
+  const userId = getAuthUserId(userPayload);
+  if (userId === null) return c.json({ error: "Invalid authenticated user" }, 401);
   const db = c.env.DB;
   await ensureMessagingTables(db);
 
@@ -84,7 +94,7 @@ messagingRouter.post("/conversations", async (c) => {
       JOIN conversation_participants cp1 ON cp1.conversation_id = c.id AND cp1.user_id = ?
       JOIN conversation_participants cp2 ON cp2.conversation_id = c.id AND cp2.user_id = ?
       WHERE c.type = 'direct'
-    `).bind(user.sub, participants[0]).first();
+    `).bind(userId, participants[0]).first();
 
     if (existing) {
       return c.json({ success: true, conversation_id: existing.id, existing: true });
@@ -93,22 +103,22 @@ messagingRouter.post("/conversations", async (c) => {
 
   const result = await db.prepare(
     `INSERT INTO conversations (title, type, created_by) VALUES (?, ?, ?)`
-  ).bind(title, type, user.sub).run();
+  ).bind(title, type, userId).run();
 
   const convoId = result.meta.last_row_id;
 
   // Add creator + participants
-  const allParticipants = [user.sub, ...participants.filter(p => p !== user.sub)];
+  const allParticipants = [userId, ...participants.filter(p => p !== userId)];
   for (const pid of allParticipants) {
     await db.prepare(
       `INSERT OR IGNORE INTO conversation_participants (conversation_id, user_id, role) VALUES (?, ?, ?)`
-    ).bind(convoId, pid, pid === user.sub ? "owner" : "member").run();
+    ).bind(convoId, pid, pid === userId ? "owner" : "member").run();
   }
 
   // System message
   await db.prepare(
     `INSERT INTO messages (conversation_id, sender_id, content, type) VALUES (?, ?, ?, 'system')`
-  ).bind(convoId, user.sub, "Conversation created. بِسْمِ ٱللَّٰهِ").run();
+  ).bind(convoId, userId, "Conversation created. بِسْمِ ٱللَّٰهِ").run();
 
   return c.json({ success: true, conversation_id: convoId }, 201);
 });
@@ -117,7 +127,9 @@ messagingRouter.post("/conversations", async (c) => {
 messagingRouter.get("/conversations/:id/messages", async (c) => {
   const authResp = await requireAuth(c as never);
   if (authResp) return authResp;
-  const user = c.get("user") as { sub: number };
+  const userPayload = c.get("user") as { userId?: number; sub?: number };
+  const userId = getAuthUserId(userPayload);
+  if (userId === null) return c.json({ error: "Invalid authenticated user" }, 401);
   const db = c.env.DB;
   await ensureMessagingTables(db);
 
@@ -128,7 +140,7 @@ messagingRouter.get("/conversations/:id/messages", async (c) => {
   // Verify user is a participant
   const participant = await db.prepare(
     `SELECT id FROM conversation_participants WHERE conversation_id = ? AND user_id = ?`
-  ).bind(convoId, user.sub).first();
+  ).bind(convoId, userId).first();
 
   if (!participant) {
     return c.json({ error: "Not a participant in this conversation" }, 403);
@@ -156,7 +168,7 @@ messagingRouter.get("/conversations/:id/messages", async (c) => {
   // Update last_read_at
   await db.prepare(
     `UPDATE conversation_participants SET last_read_at = datetime('now') WHERE conversation_id = ? AND user_id = ?`
-  ).bind(convoId, user.sub).run();
+  ).bind(convoId, userId).run();
 
   return c.json({
     success: true,
@@ -170,7 +182,9 @@ messagingRouter.get("/conversations/:id/messages", async (c) => {
 messagingRouter.post("/conversations/:id/messages", async (c) => {
   const authResp = await requireAuth(c as never);
   if (authResp) return authResp;
-  const user = c.get("user") as { sub: number };
+  const userPayload = c.get("user") as { userId?: number; sub?: number };
+  const userId = getAuthUserId(userPayload);
+  if (userId === null) return c.json({ error: "Invalid authenticated user" }, 401);
   const db = c.env.DB;
   await ensureMessagingTables(db);
 
@@ -179,7 +193,7 @@ messagingRouter.post("/conversations/:id/messages", async (c) => {
   // Verify participation
   const participant = await db.prepare(
     `SELECT id FROM conversation_participants WHERE conversation_id = ? AND user_id = ?`
-  ).bind(convoId, user.sub).first();
+  ).bind(convoId, userId).first();
 
   if (!participant) {
     return c.json({ error: "Not a participant in this conversation" }, 403);
@@ -196,7 +210,7 @@ messagingRouter.post("/conversations/:id/messages", async (c) => {
 
   const result = await db.prepare(
     `INSERT INTO messages (conversation_id, sender_id, content, type, reply_to) VALUES (?, ?, ?, ?, ?)`
-  ).bind(convoId, user.sub, content, type, body.reply_to || null).run();
+  ).bind(convoId, userId, content, type, body.reply_to || null).run();
 
   // Update conversation timestamp
   await db.prepare(
@@ -208,7 +222,7 @@ messagingRouter.post("/conversations/:id/messages", async (c) => {
     message: {
       id: result.meta.last_row_id,
       conversation_id: convoId,
-      sender_id: user.sub,
+      sender_id: userId,
       content,
       type,
       reply_to: body.reply_to || null,
@@ -221,7 +235,9 @@ messagingRouter.post("/conversations/:id/messages", async (c) => {
 messagingRouter.put("/messages/:id", async (c) => {
   const authResp = await requireAuth(c as never);
   if (authResp) return authResp;
-  const user = c.get("user") as { sub: number };
+  const userPayload = c.get("user") as { userId?: number; sub?: number };
+  const userId = getAuthUserId(userPayload);
+  if (userId === null) return c.json({ error: "Invalid authenticated user" }, 401);
   const db = c.env.DB;
 
   const msgId = parseInt(c.req.param("id"));
@@ -230,7 +246,7 @@ messagingRouter.put("/messages/:id", async (c) => {
   ).bind(msgId).first();
 
   if (!msg) return c.json({ error: "Message not found" }, 404);
-  if (msg.sender_id !== user.sub) return c.json({ error: "Can only edit your own messages" }, 403);
+  if (msg.sender_id !== userId) return c.json({ error: "Can only edit your own messages" }, 403);
 
   const body = await c.req.json<{ content: string }>();
   if (!body.content?.trim()) return c.json({ error: "Content required" }, 400);
@@ -247,7 +263,9 @@ messagingRouter.put("/messages/:id", async (c) => {
 messagingRouter.delete("/messages/:id", async (c) => {
   const authResp = await requireAuth(c as never);
   if (authResp) return authResp;
-  const user = c.get("user") as { sub: number };
+  const userPayload = c.get("user") as { userId?: number; sub?: number };
+  const userId = getAuthUserId(userPayload);
+  if (userId === null) return c.json({ error: "Invalid authenticated user" }, 401);
   const db = c.env.DB;
 
   const msgId = parseInt(c.req.param("id"));
@@ -256,7 +274,7 @@ messagingRouter.delete("/messages/:id", async (c) => {
   ).bind(msgId).first();
 
   if (!msg) return c.json({ error: "Message not found" }, 404);
-  if (msg.sender_id !== user.sub) return c.json({ error: "Can only delete your own messages" }, 403);
+  if (msg.sender_id !== userId) return c.json({ error: "Can only delete your own messages" }, 403);
 
   await db.prepare(
     `UPDATE messages SET deleted_at = datetime('now'), content = '[deleted]' WHERE id = ?`
@@ -269,7 +287,9 @@ messagingRouter.delete("/messages/:id", async (c) => {
 messagingRouter.get("/search", async (c) => {
   const authResp = await requireAuth(c as never);
   if (authResp) return authResp;
-  const user = c.get("user") as { sub: number };
+  const userPayload = c.get("user") as { userId?: number; sub?: number };
+  const userId = getAuthUserId(userPayload);
+  if (userId === null) return c.json({ error: "Invalid authenticated user" }, 401);
   const db = c.env.DB;
   await ensureMessagingTables(db);
 
@@ -284,7 +304,7 @@ messagingRouter.get("/search", async (c) => {
     WHERE m.content LIKE ? AND m.deleted_at IS NULL
     ORDER BY m.created_at DESC
     LIMIT 25
-  `).bind(user.sub, `%${q}%`).all();
+  `).bind(userId, `%${q}%`).all();
 
   return c.json({ success: true, query: q, results: results.results || [] });
 });
@@ -293,7 +313,9 @@ messagingRouter.get("/search", async (c) => {
 messagingRouter.get("/unread", async (c) => {
   const authResp = await requireAuth(c as never);
   if (authResp) return authResp;
-  const user = c.get("user") as { sub: number };
+  const userPayload = c.get("user") as { userId?: number; sub?: number };
+  const userId = getAuthUserId(userPayload);
+  if (userId === null) return c.json({ error: "Invalid authenticated user" }, 401);
   const db = c.env.DB;
   await ensureMessagingTables(db);
 
@@ -307,7 +329,7 @@ messagingRouter.get("/unread", async (c) => {
       AND (cp.last_read_at IS NULL OR m.created_at > cp.last_read_at)
     WHERE cp.user_id = ?
     GROUP BY cp.conversation_id
-  `).bind(user.sub, user.sub).all();
+  `).bind(userId, userId).all();
 
   const total = (unread.results || []).reduce((sum: number, r: any) => sum + (r.unread_count as number), 0);
 

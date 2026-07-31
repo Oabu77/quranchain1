@@ -107,6 +107,17 @@ function getCookieToken(cookieHeader: string | undefined): string | null {
   return match ? match[1] : null;
 }
 
+function isAdminPayload(payload: Record<string, unknown>, env: { ADMIN_EMAILS?: string }): boolean {
+  if (payload.role === "admin") return true;
+  const email = typeof payload.email === "string" ? payload.email.toLowerCase() : "";
+  if (!email) return false;
+  const adminEmails = (env.ADMIN_EMAILS || "")
+    .split(",")
+    .map((v) => v.trim().toLowerCase())
+    .filter(Boolean);
+  return adminEmails.includes(email);
+}
+
 // Auth middleware for protected routes — reads Bearer token OR SSO cookie
 async function requireAuth(c: { req: { header: (name: string) => string | undefined }; env: { JWT_SECRET?: string }; json: (data: unknown, status?: number) => Response; set: (key: string, value: unknown) => void }): Promise<Response | null> {
   const secret = getJwtSecret(c.env);
@@ -389,11 +400,6 @@ auth.post("/checkout/session", async (c) => {
       }, 200);
     }
 
-    // Record the checkout intent in D1
-    await db.prepare(
-      "UPDATE users SET plan = ?, updated_at = datetime('now') WHERE email = ?",
-    ).bind(plan, email.toLowerCase()).run();
-
     // Create real Stripe Checkout Session
     const stripeKey = c.env.STRIPE_SECRET_KEY;
     if (stripeKey) {
@@ -565,6 +571,7 @@ auth.get("/admin/stats", async (c) => {
   if (!token) return c.json({ error: "Authorization required" }, 401);
   const payload = await verifyJWT(token, secret);
   if (!payload) return c.json({ error: "Invalid or expired token" }, 401);
+  if (!isAdminPayload(payload, c.env)) return c.json({ error: "Admin access required" }, 403);
 
   const db = c.env.DB;
   await ensureTables(db);
