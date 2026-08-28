@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="match_parent"
+    android:background="@color/cream" android:orientation="vertical">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="72dp"
+        android:background="@color/green_dark" android:gravity="center_vertical"
+        android:orientation="horizontal" android:padding="16dp">
+        <ImageView android:layout_width="44dp" android:layout_height="44dp"
+            android:contentDescription="@null" android:src="@drawable/ic_launcher" />
+        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content"
+            android:layout_marginStart="12dp" android:layout_weight="1" android:orientation="vertical">
+            <TextView android:id="@+id/title" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:textColor="@color/white" android:textSize="19sp" android:textStyle="bold" />
+            <TextView android:id="@+id/subtitle" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:textColor="@color/gold" android:textSize="12sp" />
+        </LinearLayout>
+    </LinearLayout>
+    <FrameLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1">
+        <WebView android:id="@+id/web_view" android:layout_width="match_parent" android:layout_height="match_parent" />
+        <ProgressBar android:id="@+id/progress_bar" style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="match_parent" android:layout_height="3dp" android:max="100"
+            android:progressTint="@color/gold" />
+        <LinearLayout android:id="@+id/offline_panel" android:layout_width="match_parent" android:layout_height="match_parent"
+            android:background="@color/cream" android:gravity="center" android:orientation="vertical"
+            android:padding="32dp" android:visibility="gone">
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="Connection unavailable" android:textColor="@color/text" android:textSize="25sp" android:textStyle="bold" />
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp"
+                android:gravity="center" android:text="Reconnect to continue using this pre-release app."
+                android:textColor="@color/text" android:textSize="16sp" />
+            <Button android:id="@+id/retry_button" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:layout_marginTop="24dp" android:text="Try again" />
+        </LinearLayout>
+    </FrameLayout>
+</LinearLayout>
