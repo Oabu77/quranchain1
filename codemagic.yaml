@@ -1,0 +1,20 @@
+workflows:
+  dar-play-apps:
+    name: Dar Play Apps
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    environment:
+      java: 17
+      android_signing:
+        - darcloud_upload
+    scripts:
+      - name: Configure Android signing
+        script: |
+          printf 'storeFile=%s\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n' "$CM_KEYSTORE_PATH" "$CM_KEYSTORE_PASSWORD" "$CM_KEY_ALIAS" "$CM_KEY_PASSWORD" > play-apps/keystore.properties
+      - name: Build signed Android App Bundles
+        script: |
+          cd play-apps
+          gradle wrapper --gradle-version 8.10.2
+          ./gradlew bundleWalletRelease bundleLogisticsRelease bundleMeshtalkRelease bundleQuranchainRelease
+    artifacts:
+      - play-apps/app/build/outputs/bundle/*Release/*.aab
