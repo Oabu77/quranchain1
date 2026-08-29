@@ -11,20 +11,27 @@ health, insurance, investment, or religious-payment offerings.
 
 ## Read-only findings
 
-- At least 27,500 active products were enumerated; Stripe still reported more.
-- Exactly 1,152 active Payment Links were enumerated in the snapshot.
-- A strict product search found no active product named or described as a
-  junk-removal, hauling, cleanout, debris, dumpster, furniture-removal,
-  appliance-removal, yard-waste, or trash-removal service.
-- A line-item sample of the first 1,000 active Payment Links found zero
-  junk-removal links.
-- No active or historical subscriptions were returned by the connected account.
-- No open Checkout Sessions were returned.
-- Six webhook endpoints exist; five were enabled in the read-only snapshot.
+- The connected live account contains an abnormally large, automatically
+  generated active catalog and many active Payment Links for unsupported
+  financial, crypto, telecom, government, health, investment, insurance, and
+  other offerings.
+- A strict product search found no active item explicitly named or described as
+  a junk-removal service. The active Payment Link inventory likewise contained
+  no explicit junk-removal label or return URL.
+- The live junk-removal site separately advertises a fixed $49 Stripe-hosted
+  deposit. No $49 active Payment Link was found in the connected DarCloud
+  account, so its exact Stripe account and object must be resolved before bulk
+  deactivation. Do not infer that it is safe to remove.
+- No subscriptions, open Checkout Sessions, refunds, or disputes were returned.
+- Legacy webhook endpoints remain enabled for retired storefronts.
+- Unsupported Dar Al Nas funding/settlement PaymentIntents remain confirmable
+  with payment methods attached. They must be canceled before release so they
+  cannot be charged.
 
-These counts are minimums, not totals. Product and Payment Link generation must
-be stopped before cleanup, or newly generated objects can immediately recreate
-the exposure.
+Exact object IDs, counts, amounts, and financial activity are retained outside
+this public repository. Product and Payment Link generation must be stopped
+before cleanup, or newly generated objects can immediately recreate the
+exposure.
 
 ## Required order of operations
 
@@ -33,7 +40,9 @@ the exposure.
 2. Export the complete product, price, Payment Link, webhook, Checkout Session,
    PaymentIntent, charge, refund, dispute, and customer inventory from Stripe.
    Preserve the export and record the UTC cutoff time.
-3. Tag only a verified DarCloud Junk Removal offering as `release_preserve`.
+3. Resolve the live junk site's fixed $49 deposit to its exact Stripe account,
+   Payment Link or Checkout object, product, price, and webhook path. Then tag
+   only a verified DarCloud Junk Removal offering as `release_preserve`.
    A preserved item must have a truthful service description, service area,
    fulfillment process, refund/cancellation terms, customer-support route, and
    statement descriptor. Do not infer preservation from a generic DarCloud name.
