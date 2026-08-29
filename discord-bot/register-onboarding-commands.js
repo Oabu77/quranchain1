@@ -1,3 +1,5 @@
+require("../shared/bot-runtime-gate");
+
 // Register onboarding commands for ALL DarCloud Empire bots
 // Run: node register-onboarding-commands.js
 const { readFileSync } = require("fs");
@@ -93,3 +95,4 @@ async function registerCommands() {
 }
 
 registerCommands().catch(console.error);
+require("../shared/bot-runtime-gate");

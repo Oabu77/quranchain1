@@ -1,3 +1,5 @@
+require("./shared/bot-runtime-gate");
+
 // Register ALL commands GLOBALLY for all 5 bot applications
 // Global commands work on EVERY server the bot is added to
 // (Takes up to 1 hour for Discord to fully propagate globally)

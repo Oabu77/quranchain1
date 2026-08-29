@@ -1,3 +1,5 @@
+require("../shared/bot-runtime-gate");
+
 // ══════════════════════════════════════════════════════════════
 // DarDeFi Discord Bot
 // DarDeFi™ — Halal DeFi, NFTs, Staking & DEX
@@ -254,3 +256,4 @@ client.on('shardError', err => { console.error('[DarDeFi] Shard error:', err.mes
 process.on('unhandledRejection', err => { console.error('[DarDeFi] Unhandled:', err.message); });
 
 client.login(process.env.DISCORD_TOKEN);
+require("../shared/bot-runtime-gate");

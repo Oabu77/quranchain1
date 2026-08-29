@@ -1,3 +1,5 @@
+require("./shared/bot-runtime-gate");
+
 // Register commands individually via POST (different rate limit bucket from bulk PUT)
 const https = require('https');
 const fs = require('fs');

@@ -1,3 +1,5 @@
+require("./shared/bot-runtime-gate");
+
 // ══════════════════════════════════════════════════════════════
 // DarCloud Bot Avatar Generator & Uploader
 // Generates branded circular avatars and uploads via Discord API

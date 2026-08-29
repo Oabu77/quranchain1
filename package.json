@@ -1,7 +1,7 @@
 {
 	"name": "quranchain1",
 	"version": "5.4.0",
-	"description": "QuranChain™ DarCloud API — 101 companies, 77 AI agents, JWT auth, inter-company contracts, DarLaw AI, Islamic fintech. Built on Cloudflare Workers + D1 + Hono + chanfana OpenAPI.",
+	"description": "DarCloud pre-release software and API prototypes built on Cloudflare Workers, D1, Hono, and chanfana.",
 	"cloudflare": {
 		"label": "QuranChain™ DarCloud API",
 		"products": [
@@ -14,7 +14,7 @@
 		"docs_url": "https://chanfana.com",
 		"preview_icon_url": "https://imagedelivery.net/wSMYJvS3Xw-n339CbDyDIA/1b2805d9-e7fb-4576-5176-6b409e251800/public",
 		"preview_image_url": "https://imagedelivery.net/wSMYJvS3Xw-n339CbDyDIA/cbde46cf-20fa-4548-7f70-1ae8c2f48900/preview",
-		"publish": true
+		"publish": false
 	},
 	"dependencies": {
 		"@napi-rs/canvas": "^0.1.96",
@@ -24,20 +24,22 @@
 		"zod": "3.25.67"
 	},
 	"devDependencies": {
-		"@cloudflare/vitest-pool-workers": "^0.12.13",
+		"@cloudflare/vitest-pool-workers": "^0.22.0",
 		"@types/node": "24.10.1",
 		"typescript": "5.9.3",
-		"vitest": "3.2.4",
-		"wrangler": "^4.66.0"
+		"vitest": "^4.1.11",
+		"wrangler": "^4.127.1"
 	},
 	"private": true,
 	"scripts": {
 		"cf-typegen": "wrangler types",
-		"deploy": "wrangler deploy",
-		"dev": "pnpm seedLocalDb && wrangler dev",
-		"predeploy": "wrangler d1 migrations apply DB --remote",
+		"deploy": "./deploy.sh",
+		"dev": "npm run seedLocalDb && wrangler dev",
 		"schema": "npx chanfana",
 		"seedLocalDb": "wrangler d1 migrations apply DB --local",
-		"test": "wrangler deploy --dry-run && npx vitest run --config tests/vitest.config.mts"
+		"verify:landing-pages": "node generate-landing-pages.js",
+		"test:integration": "vitest run --config tests/vitest.config.mts --max-workers=1 --no-isolate",
+		"release:validate": "./deploy.sh --validate-only",
+		"test": "npm run verify:landing-pages && wrangler deploy --dry-run && npm run test:integration"
 	}
 }

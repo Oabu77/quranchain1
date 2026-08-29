@@ -1,3 +1,5 @@
+require("../shared/bot-runtime-gate");
+
 // ══════════════════════════════════════════════════════════════
 // DarSecurity Discord Bot
 // DarSecurity™ — Cybersecurity, Quantum Tech & Space Systems
@@ -229,3 +231,4 @@ client.on('shardError', err => { console.error('[DarSecurity] Shard error:', err
 process.on('unhandledRejection', err => { console.error('[DarSecurity] Unhandled:', err.message); });
 
 client.login(process.env.DISCORD_TOKEN);
+require("../shared/bot-runtime-gate");

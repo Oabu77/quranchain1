@@ -1,3 +1,5 @@
+require("../shared/bot-runtime-gate");
+
 // ══════════════════════════════════════════════════════════════
 // DarEdu Discord Bot
 // DarEdu™ — Islamic Education, University & Research
@@ -228,3 +230,4 @@ client.on('shardError', err => { console.error('[DarEdu] Shard error:', err.mess
 process.on('unhandledRejection', err => { console.error('[DarEdu] Unhandled:', err.message); });
 
 client.login(process.env.DISCORD_TOKEN);
+require("../shared/bot-runtime-gate");

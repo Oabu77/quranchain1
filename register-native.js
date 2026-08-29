@@ -1,3 +1,5 @@
+require("./shared/bot-runtime-gate");
+
 // Native HTTPS command registration — bypasses discord.js REST client hang
 const https = require('https');
 const fs = require('fs');

@@ -1,3 +1,5 @@
+require("../shared/bot-runtime-gate");
+
 // ==========================================================
 // QuranChain™ Blockchain Discord Bot
 // Real 47-chain ecosystem | QRN Economy | Islamic Knowledge Games
@@ -944,3 +946,4 @@ process.on("SIGINT", () => { log("INFO", "Shutting down..."); client.destroy(); 
 process.on("SIGTERM", () => { log("INFO", "Shutting down..."); client.destroy(); process.exit(0); });
 
 client.login(DISCORD_TOKEN);
+require("../shared/bot-runtime-gate");

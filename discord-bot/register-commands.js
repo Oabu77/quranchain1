@@ -1,3 +1,5 @@
+require("../shared/bot-runtime-gate");
+
 // ==========================================================
 // QuranChain™ / DarCloud™ Discord Bot — Slash Command Registration
 // ==========================================================
@@ -335,3 +337,4 @@ const rest = new REST().setToken(DISCORD_TOKEN);
     process.exit(1);
   }
 })();
+require("../shared/bot-runtime-gate");

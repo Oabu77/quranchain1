@@ -1,11 +1,12 @@
 {
   "name": "quranchain-discord-bot",
   "version": "1.0.0",
-  "description": "QuranChain™ Blockchain Discord Bot — 47 chains, QRN economy, Islamic knowledge games",
+  "private": true,
+  "description": "Quarantined pre-release Discord bot source; no live service is offered.",
   "main": "bot.js",
   "scripts": {
-    "start": "node bot.js",
-    "register": "node register-commands.js"
+    "start": "node ../shared/quarantined-command.js",
+    "register": "node ../shared/quarantined-command.js"
   },
   "dependencies": {
     "discord.js": "^14.18.0",

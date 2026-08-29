@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+require("./shared/bot-runtime-gate");
 // Comprehensive fix: Remove bad insertion, re-insert with correct pattern per bot
 const fs = require("fs");
 const { execSync } = require("child_process");

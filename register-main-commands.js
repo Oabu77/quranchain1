@@ -1,3 +1,5 @@
+require("./shared/bot-runtime-gate");
+
 // Register main bot commands (36 commands) with auto-retry on rate limit
 const https = require('https');
 const fs = require('fs');

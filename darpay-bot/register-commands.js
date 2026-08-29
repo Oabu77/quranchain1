@@ -1,3 +1,5 @@
+require("../shared/bot-runtime-gate");
+
 const { REST, Routes, SlashCommandBuilder } = require("discord.js");
 const { readFileSync } = require("fs");
 const { resolve } = require("path");
@@ -67,3 +69,4 @@ const rest = new REST().setToken(TOKEN);
     console.log(`✓ Registered ${commands.length} global commands`);
   }
 })().catch(e => { console.error("Failed:", e); process.exit(1); });
+require("../shared/bot-runtime-gate");

@@ -1,11 +1,12 @@
 {
   "name": "dartelecom-isp-controller",
   "version": "1.0.0",
-  "description": "DarTelecom ISP Controller — Subscriber management, billing, network monitoring",
+  "private": true,
+  "description": "Quarantined pre-release telecom controller source; no live service is offered.",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "node --watch server.js"
+    "start": "node ../../shared/quarantined-command.js",
+    "dev": "node ../../shared/quarantined-command.js"
   },
   "dependencies": {
     "express": "^4.21.0",

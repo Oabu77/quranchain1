@@ -1,3 +1,5 @@
+require("../shared/bot-runtime-gate");
+
 // ══════════════════════════════════════════════════════════════
 // DarEnergy Discord Bot
 // DarEnergy™ — Energy, Oil, Mining & Resources
@@ -221,3 +223,4 @@ client.on('shardError', err => { console.error('[DarEnergy] Shard error:', err.m
 process.on('unhandledRejection', err => { console.error('[DarEnergy] Unhandled:', err.message); });
 
 client.login(process.env.DISCORD_TOKEN);
+require("../shared/bot-runtime-gate");

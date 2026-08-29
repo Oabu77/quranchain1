@@ -1,49 +1,42 @@
-name: QuranChain™ Deploy
+name: QuranChain™ Release Validation
 
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 jobs:
-  deploy:
+  validate:
     runs-on: ubuntu-latest
-    name: Deploy to Cloudflare Workers
+    name: Validate release candidate
     steps:
       - uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
-          cache: 'npm'
+          node-version: "22"
+          cache: npm
 
       - name: Install dependencies
         run: npm ci
 
+      - name: Verify retired landing pages
+        run: npm run verify:landing-pages
+
       - name: TypeScript check
         run: npx tsc --noEmit
 
+      - name: Worker dry run
+        run: npx wrangler deploy --dry-run
+
       - name: Run tests
-        run: npx vitest run --config tests/vitest.config.mts 2>/dev/null || echo "Tests skipped (no test DB in CI)"
+        run: npm run test:integration
 
-      - name: Apply D1 Migrations
-        run: echo "y" | npx wrangler d1 migrations apply DB --remote
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-
-      - name: Deploy Worker
-        run: npx wrangler deploy
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-
-      - name: Verify deployment
-        run: |
-          sleep 5
-          WORKER_URL="https://quranchain1.$(echo ${{ secrets.CLOUDFLARE_ACCOUNT_ID }} | head -c 8).workers.dev"
-          echo "Deployed to Cloudflare Workers"
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+  # Production deployment is intentionally not automatic. This Worker owns
+  # broad DarCloud routes and shares a D1 database with the dedicated MeshTalk
+  # Worker. Production names, routes, credentials, and remote bindings are not
+  # present in this repository. A release operator must supply an independently
+  # reviewed configuration after migration and route-ownership checks.

@@ -9,10 +9,10 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.view.View;
 import android.webkit.CookieManager;
-import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -21,11 +21,9 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 public final class MainActivity extends Activity {
-    private static final int FILE_PICKER_REQUEST = 7412;
     private WebView webView;
     private ProgressBar progress;
     private View offline;
-    private ValueCallback<Uri[]> pendingFileCallback;
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
@@ -46,7 +44,7 @@ public final class MainActivity extends Activity {
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
         s.setAllowFileAccess(false);
-        s.setAllowContentAccess(true);
+        s.setAllowContentAccess(false);
         s.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         s.setGeolocationEnabled(false);
         s.setMediaPlaybackRequiresUserGesture(true);
@@ -66,10 +64,12 @@ public final class MainActivity extends Activity {
             @Override public void onReceivedError(WebView view, WebResourceRequest req, WebResourceError err) {
                 if (req.isForMainFrame()) showOffline();
             }
+            @Override public void onReceivedHttpError(WebView view, WebResourceRequest req, WebResourceResponse response) {
+                if (req.isForMainFrame() && response.getStatusCode() >= 400) showOffline();
+            }
             @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest req) {
                 Uri uri = req.getUrl();
-                Uri home = Uri.parse(BuildConfig.HOME_URL);
-                if ("https".equalsIgnoreCase(uri.getScheme()) && home.getHost().equalsIgnoreCase(uri.getHost())) return false;
+                if (isTrustedInternalUri(uri)) return false;
                 if (!"https".equalsIgnoreCase(uri.getScheme()) && !"http".equalsIgnoreCase(uri.getScheme())) {
                     Toast.makeText(MainActivity.this, "Unsupported link blocked", Toast.LENGTH_LONG).show();
                     return true;
@@ -84,16 +84,19 @@ public final class MainActivity extends Activity {
                 progress.setProgress(value);
                 progress.setVisibility(value >= 100 ? View.GONE : View.VISIBLE);
             }
-            @Override public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback, FileChooserParams params) {
-                if (pendingFileCallback != null) pendingFileCallback.onReceiveValue(null);
-                pendingFileCallback = callback;
-                Intent picker = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-                picker.addCategory(Intent.CATEGORY_OPENABLE);
-                picker.setType("image/*");
-                try { startActivityForResult(picker, FILE_PICKER_REQUEST); return true; }
-                catch (ActivityNotFoundException e) { pendingFileCallback = null; return false; }
-            }
         });
+    }
+
+    private boolean isTrustedInternalUri(Uri uri) {
+        Uri home = Uri.parse(BuildConfig.HOME_URL);
+        if (!"https".equalsIgnoreCase(uri.getScheme())) return false;
+        if (uri.getPort() != -1 && uri.getPort() != 443) return false;
+        if (home.getHost() == null || uri.getHost() == null) return false;
+        if (!home.getHost().equalsIgnoreCase(uri.getHost())) return false;
+
+        String path = uri.getPath() == null || uri.getPath().isEmpty() ? "/" : uri.getPath();
+        String prefix = BuildConfig.INTERNAL_PATH_PREFIX;
+        return "/".equals(prefix) || path.equals(prefix) || path.startsWith(prefix + "/");
     }
 
     private void loadHome() {
@@ -113,18 +116,7 @@ public final class MainActivity extends Activity {
         webView.saveState(out);
         super.onSaveInstanceState(out);
     }
-    @Override protected void onActivityResult(int request, int result, Intent data) {
-        super.onActivityResult(request, result, data);
-        if (request != FILE_PICKER_REQUEST || pendingFileCallback == null) return;
-        Uri[] value = result == RESULT_OK && data != null && data.getData() != null ? new Uri[]{data.getData()} : null;
-        pendingFileCallback.onReceiveValue(value);
-        pendingFileCallback = null;
-    }
     @Override protected void onDestroy() {
-        if (pendingFileCallback != null) {
-            pendingFileCallback.onReceiveValue(null);
-            pendingFileCallback = null;
-        }
         if (webView != null) {
             webView.stopLoading();
             webView.destroy();

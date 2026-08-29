@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+require("./shared/bot-runtime-gate");
 // Fix all 20 sector bot.js files — remove bad insertion and re-insert correctly
 const fs = require("fs");
 const path = require("path");

@@ -1,3 +1,5 @@
+require("../shared/bot-runtime-gate");
+
 // ══════════════════════════════════════════════════════════════
 // DarHealth Discord Bot
 // DarHealth™ — Halal Healthcare & Telemedicine
@@ -235,3 +237,4 @@ client.on('shardError', err => { console.error('[DarHealth] Shard error:', err.m
 process.on('unhandledRejection', err => { console.error('[DarHealth] Unhandled:', err.message); });
 
 client.login(process.env.DISCORD_TOKEN);
+require("../shared/bot-runtime-gate");

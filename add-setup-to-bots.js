@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+require("./shared/bot-runtime-gate");
 // Bulk-add /setup, /my-services, /upgrade commands to all sector bots
 const fs = require("fs");
 const path = require("path");

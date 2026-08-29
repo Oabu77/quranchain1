@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+require("./shared/bot-runtime-gate");
 // ══════════════════════════════════════════════════════════════
 // DarCloud Empire — Bot Factory Generator
 // Creates Discord bots for ALL service divisions

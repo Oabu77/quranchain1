@@ -1,3 +1,5 @@
+require("../shared/bot-runtime-gate");
+
 // ══════════════════════════════════════════════════════════════
 // DarHR Discord Bot
 // DarHR™ — Muslim Workforce, Consulting & Marketing
@@ -210,3 +212,4 @@ client.on('shardError', err => { console.error('[DarHR] Shard error:', err.messa
 process.on('unhandledRejection', err => { console.error('[DarHR] Unhandled:', err.message); });
 
 client.login(process.env.DISCORD_TOKEN);
+require("../shared/bot-runtime-gate");

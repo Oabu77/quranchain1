@@ -1,3 +1,5 @@
+require("../shared/bot-runtime-gate");
+
 // ==========================================================
 // DarPay™ Revenue Engine Bot — LIVE Payments, Stripe, Gas Tolls
 // 47 chains · 30% immutable founder royalty · 5 revenue streams
@@ -333,3 +335,4 @@ client.on("entitlementDelete", e => { discordPremium.handleEntitlementDelete(e);
 process.on("SIGINT", () => { log("INFO", "Shutting down..."); client.destroy(); process.exit(0); });
 process.on("SIGTERM", () => { log("INFO", "Shutting down..."); client.destroy(); process.exit(0); });
 client.login(TOKEN);
+require("../shared/bot-runtime-gate");

@@ -1,3 +1,5 @@
+require("../shared/bot-runtime-gate");
+
 // ══════════════════════════════════════════════════════════════
 // DarCommerce Discord Bot
 // DarCommerce™ — Halal Marketplace, Food, Travel & Lifestyle
@@ -240,3 +242,4 @@ client.on('shardError', err => { console.error('[DarCommerce] Shard error:', err
 process.on('unhandledRejection', err => { console.error('[DarCommerce] Unhandled:', err.message); });
 
 client.login(process.env.DISCORD_TOKEN);
+require("../shared/bot-runtime-gate");

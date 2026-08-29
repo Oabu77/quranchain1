@@ -46,6 +46,9 @@ class MeshRouter {
 
   // ── Start the mesh router + real cell tower ──
   async start() {
+    throw new Error(
+      "Legacy mesh routing and cell-tower networking are quarantined during pre-release remediation."
+    );
     console.log(`[MESH-ROUTER] ${this.config.name} starting as REAL cell tower ${this.nodeId}`);
 
     // 1. Boot the real cell tower (binds UDP/TCP/DNS ports)

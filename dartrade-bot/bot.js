@@ -1,3 +1,5 @@
+require("../shared/bot-runtime-gate");
+
 // ══════════════════════════════════════════════════════════════
 // DarTrade Discord Bot
 // DarTrade™ — Global Trade, Logistics & Import/Export
@@ -217,3 +219,4 @@ client.on('shardError', err => { console.error('[DarTrade] Shard error:', err.me
 process.on('unhandledRejection', err => { console.error('[DarTrade] Unhandled:', err.message); });
 
 client.login(process.env.DISCORD_TOKEN);
+require("../shared/bot-runtime-gate");

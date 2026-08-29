@@ -1,3 +1,5 @@
+require("../shared/bot-runtime-gate");
+
 // ══════════════════════════════════════════════════════════════
 // Omar AI Discord Bot
 // Omar AI™ — AMĀN Control Plane & Sovereign Vision Layer
@@ -224,3 +226,4 @@ client.on('shardError', err => { console.error('[Omar AI] Shard error:', err.mes
 process.on('unhandledRejection', err => { console.error('[Omar AI] Unhandled:', err.message); });
 
 client.login(process.env.DISCORD_TOKEN);
+require("../shared/bot-runtime-gate");

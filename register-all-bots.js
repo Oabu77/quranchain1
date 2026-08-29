@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+require("./shared/bot-runtime-gate");
 // Register commands for all 21 sector bots
 const { execSync } = require("child_process");
 

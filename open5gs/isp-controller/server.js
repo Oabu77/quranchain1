@@ -1,3 +1,5 @@
+throw new Error("DarTelecom ISP controller is quarantined during pre-release remediation.");
+
 // ==========================================================
 // DarTelecom™ ISP Controller — Complete ISP Management
 // Subscriber provisioning, SIM management, billing, monitoring

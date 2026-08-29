@@ -1,3 +1,5 @@
+require("../shared/bot-runtime-gate");
+
 // ══════════════════════════════════════════════════════════════
 // DarRealty Discord Bot
 // Dar Realty™ — Real Estate, Smart Cities & Construction
@@ -227,3 +229,4 @@ client.on('shardError', err => { console.error('[DarRealty] Shard error:', err.m
 process.on('unhandledRejection', err => { console.error('[DarRealty] Unhandled:', err.message); });
 
 client.login(process.env.DISCORD_TOKEN);
+require("../shared/bot-runtime-gate");

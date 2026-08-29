@@ -1,3 +1,5 @@
+require("../shared/bot-runtime-gate");
+
 // ══════════════════════════════════════════════════════════════
 // Dar Al-Nas Bank Discord Bot
 // Dar Al-Nas™ — Full Islamic Banking & Treasury
@@ -304,3 +306,4 @@ client.on('shardError', err => { console.error('[Dar Al-Nas Bank] Shard error:',
 process.on('unhandledRejection', err => { console.error('[Dar Al-Nas Bank] Unhandled:', err.message); });
 
 client.login(process.env.DISCORD_TOKEN);
+require("../shared/bot-runtime-gate");

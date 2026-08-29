@@ -25,30 +25,34 @@ android {
         create("wallet") {
             dimension = "app"
             applicationId = "com.daralnas.wallet"
-            resValue("string", "app_name", "Dar Wallet")
-            resValue("string", "app_subtitle", "Private account prototype")
-            buildConfigField("String", "HOME_URL", "\"https://banking.darcloud.host/\"")
+            resValue("string", "app_name", "Dar Wallet Research")
+            resValue("string", "app_subtitle", "Non-financial budgeting research; no account or money movement")
+            buildConfigField("String", "HOME_URL", "\"https://wallet.darcloud.host/\"")
+            buildConfigField("String", "INTERNAL_PATH_PREFIX", "\"/\"")
         }
         create("logistics") {
             dimension = "app"
             applicationId = "com.darcloud.logistics"
             resValue("string", "app_name", "Dar Logistics")
-            resValue("string", "app_subtitle", "Shipping and fleet tools")
+            resValue("string", "app_subtitle", "Internal preview; fictional data, no live operations")
             buildConfigField("String", "HOME_URL", "\"https://logistics.darcloud.host/\"")
+            buildConfigField("String", "INTERNAL_PATH_PREFIX", "\"/\"")
         }
         create("meshtalk") {
             dimension = "app"
             applicationId = "com.darcloud.meshtalk"
             resValue("string", "app_name", "MeshTalk")
-            resValue("string", "app_subtitle", "Resilient community communications")
-            buildConfigField("String", "HOME_URL", "\"https://fungios.darcloud.host/\"")
+            resValue("string", "app_subtitle", "Beta direct/group text; no E2EE, calls, media, or push")
+            buildConfigField("String", "HOME_URL", "\"https://darcloud.host/meshtalk\"")
+            buildConfigField("String", "INTERNAL_PATH_PREFIX", "\"/meshtalk\"")
         }
         create("quranchain") {
             dimension = "app"
             applicationId = "com.quranchain.rewards"
-            resValue("string", "app_name", "QuranChain Rewards")
-            resValue("string", "app_subtitle", "Prayer, reading and test rewards")
-            buildConfigField("String", "HOME_URL", "\"https://darcloud.host/\"")
+            resValue("string", "app_name", "QuranChain Tracker")
+            resValue("string", "app_subtitle", "Private prayer/Quran tracker; no token rewards, mining, or financial value")
+            buildConfigField("String", "HOME_URL", "\"https://quranchain.darcloud.host/\"")
+            buildConfigField("String", "INTERNAL_PATH_PREFIX", "\"/\"")
         }
     }
 

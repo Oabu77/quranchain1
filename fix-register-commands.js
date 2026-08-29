@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+require("./shared/bot-runtime-gate");
 // Fix register-commands.js for bots using the simple {name,description} array pattern
 const fs = require("fs");
 const path = require("path");

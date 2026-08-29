@@ -1,3 +1,5 @@
+require("./shared/bot-runtime-gate");
+
 // Native HTTPS command registration for ALL DarCloud bots
 // Bypasses discord.js REST client hanging issue
 const https = require('https');

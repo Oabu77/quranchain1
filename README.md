@@ -1,146 +1,54 @@
-# QuranChain™ — DarCloud API
+# DarCloud pre-release Worker
 
-**v5.4.0** · Production API powering the DarCloud infrastructure stack.
+This repository contains restricted DarCloud software previews built with Cloudflare Workers, Hono, chanfana, and D1. It is not evidence of operating companies, contracts, licenses, filings, revenue, infrastructure, users, financial products, token activity, logistics fulfillment, or telecom service.
 
-> بِسْمِ اللَّهِ الرَّحْمَنِ الرَّحِيمِ
+## Current public scope
 
-## Overview
+| Surface | Current status |
+|---|---|
+| Main account | Registration, login, sessions, profile access, and account APIs are closed |
+| MeshTalk | Separate live beta Worker at `https://darcloud.host/meshtalk`; direct/group text only, with blocking, reporting, and account deletion |
+| QuranChain Tracker | Device-only prayer and Quran-reading tracker; no account sync, location, token, mining, or rewards |
+| Wallet | Research and budgeting concept; no financial account or money movement |
+| Logistics | Internal interface preview using fictional records; no booking, dispatch, tracking, shipment, payment, or fulfillment |
+| Other named concepts | Fail-closed “not live” page |
 
-| Metric | Value |
-|--------|-------|
-| Companies | 101 |
-| Inter-company contracts | 175+ |
-| Monthly revenue | $402K+ |
-| AI agents | 77 (66 fleet + 11 DarLaw) |
-| D1 tables | 59 |
-| Tests | 41 passing |
+Checkout, subscriptions, financial services, contract/legal automation, revenue reporting, operational infrastructure APIs, legacy messaging, user lookup, and administrator statistics are disabled.
 
-## Stack
-
-- **Runtime:** Cloudflare Workers (ESM)
-- **Framework:** [Hono](https://hono.dev) v4.10.7 + [chanfana](https://chanfana.com) v2.8.3 (OpenAPI 3.1)
-- **Database:** Cloudflare D1 (SQLite)
-- **Auth:** JWT HMAC-SHA256 with 24h expiry + IP-based rate limiting
-- **Validation:** Zod v3.25.67
-- **Tests:** Vitest + @cloudflare/vitest-pool-workers
-- **CI/CD:** GitHub Actions → TypeScript check → Tests → D1 migrations → Wrangler deploy
-
-## Domains
-
-| Domain | Service |
-|--------|---------|
-| `darcloud.host` | Main API + auth pages |
-| `ai.darcloud.host` | AI fleet (77 agents) |
-| `mesh.darcloud.host` | FungiMesh encrypted network |
-| `blockchain.darcloud.host` | QuranChain explorer |
-| `halalwealthclub.darcloud.host` | Halal Wealth Club |
-| `enterprise.darcloud.host` | Enterprise landing |
-| `realestate.darcloud.host` | DarEstate |
-| `darcloud.net` | Public landing |
-
-## API Endpoints
-
-### Auth & Pages
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/signup` | Signup page |
-| GET | `/login` | Login page |
-| GET | `/dashboard` | User dashboard (JWT-protected client) |
-| GET | `/admin` | Admin panel (JWT-protected client) |
-| GET | `/onboarding` | Onboarding flow |
-| GET | `/checkout/:plan` | DarPay™ checkout |
-| POST | `/api/auth/signup` | Create account → JWT token |
-| POST | `/api/auth/login` | Login → JWT token |
-| GET | `/api/auth/me` | Current user info (Bearer token) |
-| GET | `/api/admin/stats` | Admin dashboard stats (Bearer token) |
-
-### Contracts & DarLaw
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/contracts` | List all contracts |
-| GET | `/api/contracts/companies` | List 101 companies |
-| GET | `/api/contracts/revenue` | Revenue breakdown by company |
-| GET | `/api/contracts/darlaw/agents` | 11 DarLaw AI agents |
-| GET | `/api/contracts/legal/filings` | Legal filings |
-| GET | `/api/contracts/legal/ip` | IP portfolio (75 TM, 27 patents, 8 ©) |
-| POST | `/api/contracts/bootstrap` | Bootstrap full ecosystem |
-
-### Infrastructure (OpenAPI)
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/health` | System health check |
-| GET | `/docs` | Interactive OpenAPI explorer |
-| * | `/tasks` | Task management CRUD |
-| * | `/backups` | Backup registry |
-| * | `/mesh` | FungiMesh nodes |
-| * | `/ai` | AI fleet management |
-| * | `/minecraft` | Minecraft servers |
-| * | `/multipass` | VM fleet |
-
-## Quick Start
+## Local validation
 
 ```bash
-# Install
-npm install
-
-# Local dev
-npm run dev
-
-# Run tests
-npx vitest run --config tests/vitest.config.mts
-
-# Deploy
-npm run deploy
+npm ci
+npm test
+npx tsc --noEmit
 ```
 
-## Environment Variables
+`npm test` verifies retired landing modules, performs a validation-only Worker dry run, and runs the integration suite inside the Cloudflare Workers test runtime. The committed Wrangler configuration has no public URL, route, production account identifier, or remote D1 binding.
 
-Copy `.env.example` to `.env`:
+## Release safety
 
-```bash
-CLOUDFLARE_API_TOKEN=     # Workers Scripts:Edit, D1:Edit
-CLOUDFLARE_ACCOUNT_ID=    # From Workers dashboard
-JWT_SECRET=               # Set via: npx wrangler secret put JWT_SECRET
-```
+Production deployment is intentionally not automatic, and the production Worker name, routes, credentials, and remote D1 binding are deliberately absent from this repository. The currently deployed broad DarCloud Worker and the separate `quranchain` MeshTalk Worker have historically shared a D1 database; that architecture must be disentangled or reviewed before any release.
 
-## Project Structure
+Before any manual production deployment:
 
-```
-src/
-├── index.ts              # Hono app, routes, OpenAPI registry
-├── pages.ts              # Server-rendered HTML (signup, login, dashboard, admin)
-├── types.ts              # Shared types
-├── endpoints/
-│   ├── auth.ts           # JWT auth, rate limiting, signup/login/me/admin
-│   ├── contracts.ts      # 101 companies, 175 contracts, DarLaw AI, IP
-│   ├── systemHealth.ts   # Health check with component monitoring
-│   └── tasks/            # OpenAPI task CRUD
-├── data/
-│   ├── companies.ts      # 101 company definitions
-│   ├── contracts-data.ts # 175 contract templates
-│   ├── ip-portfolio.ts   # IP protections (trademarks, patents, etc.)
-│   └── legal-filings.ts  # Legal filing templates
-tests/
-├── integration/
-│   ├── auth.test.ts      # 17 auth tests (signup, login, JWT, admin)
-│   ├── contracts.test.ts # 12 contract tests (CRUD, DarLaw, migration)
-│   ├── tasks.test.ts     # 11 task CRUD tests
-│   └── dummyEndpoint.test.ts  # Health check test
-migrations/               # D1 SQL migrations
-```
+1. Run the complete validation gate.
+2. Confirm the exact commit under review.
+3. Supply a separate, operator-controlled production configuration; do not copy the validation UUID.
+4. Inspect remote pending D1 migrations; do not auto-apply them.
+5. Capture a D1 Time Travel bookmark and inventory any legacy personal data.
+6. Verify both `darcloud.host/meshtalk*` and `darcloud.host/api/meshtalk*` still map to the `quranchain` Worker.
+7. Confirm any Stripe webhook registered to this Worker is removed because webhook processing is retired.
+8. Deploy only the reviewed Worker bundle through an approved production environment.
+9. Purge the Cloudflare edge cache for the affected apex and `www` hosts.
+10. Confirm `/sw.js` serves the cleanup worker on `darcloud.host`, `www.darcloud.host`, and `darcloud.net`; allow existing root-scope registrations to update, then verify the legacy `quranchain-*` browser caches and registrations are gone. Keep the cleanup route deployed until that lifecycle has been observed on each origin.
+11. Recheck route ownership, CORS/security headers, disabled checkout/auth gates, the replacement manifest, and MeshTalk health.
 
-## Islamic Finance
+The legacy `deploy.sh` and `deploy-all.sh` entry points are retired and perform validation only. They do not mutate D1, Cloudflare, Discord, Stripe, or production processes.
 
-All financial operations are Shariah-compliant:
-- **Zakat:** 2% auto-calculated on all revenue
-- **Founder Royalty:** 30% immutable on all contracts
-- **Autopay:** Monthly on all 175 contracts
-- **DarPay™:** Zero-riba payment processing
+## Android wrappers
 
-## Owner
+The `play-apps/` source builds separate Wallet, Logistics, MeshTalk, and QuranChain Tracker variants. Store copy and URLs must match the current scopes above. A build artifact is not a license, approval, production launch, or proof that a backend capability exists.
 
-**Omar Mohammad Abunadi** · [GitHub](https://github.com/Oabu77)
+## Legal and financial boundary
 
----
-
-*Built with Cloudflare Workers + D1 + Hono + chanfana OpenAPI*
+DarCloud LLC status, an EIN, a private membership structure, or an overseas entity does not by itself authorize banking, custody, money transmission, securities, token exchange, insurance, credit, or other regulated activity. Such features remain disabled unless and until a qualified licensed provider and counsel approve the exact product, jurisdictions, disclosures, and operating model.

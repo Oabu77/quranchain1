@@ -1,3 +1,5 @@
+require("../shared/bot-runtime-gate");
+
 // ══════════════════════════════════════════════════════════════
 // DarMedia Discord Bot
 // DarMedia™ — Islamic Media, Broadcasting & Streaming
@@ -227,3 +229,4 @@ client.on('shardError', err => { console.error('[DarMedia] Shard error:', err.me
 process.on('unhandledRejection', err => { console.error('[DarMedia] Unhandled:', err.message); });
 
 client.login(process.env.DISCORD_TOKEN);
+require("../shared/bot-runtime-gate");

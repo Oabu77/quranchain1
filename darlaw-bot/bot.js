@@ -1,3 +1,5 @@
+require("../shared/bot-runtime-gate");
+
 // ==========================================================
 // DarLaw™ Bot — Legal AI with 11 Specialized Agents
 // IP protection · Trademark · Patent · Compliance · Shariah
@@ -289,3 +291,4 @@ client.on("entitlementDelete", e => { discordPremium.handleEntitlementDelete(e);
 process.on("SIGINT", () => { log("INFO", "Shutting down..."); client.destroy(); process.exit(0); });
 process.on("SIGTERM", () => { log("INFO", "Shutting down..."); client.destroy(); process.exit(0); });
 client.login(TOKEN);
+require("../shared/bot-runtime-gate");

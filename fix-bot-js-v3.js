@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+require("./shared/bot-runtime-gate");
 // Final comprehensive fix for all 14 remaining bots
 // Strategy: Remove the entire bad "} else if" block, then add proper case statements
 const fs = require("fs");

@@ -1,3 +1,5 @@
+require("../shared/bot-runtime-gate");
+
 // ==========================================================
 // Halal Wealth Club™ Bot — Islamic Banking & Finance
 // Zero-riba · Shariah-compliant · 31 USA markets
@@ -314,3 +316,4 @@ client.on("entitlementDelete", e => { discordPremium.handleEntitlementDelete(e);
 process.on("SIGINT", () => { log("INFO", "Shutting down..."); client.destroy(); process.exit(0); });
 process.on("SIGTERM", () => { log("INFO", "Shutting down..."); client.destroy(); process.exit(0); });
 client.login(TOKEN);
+require("../shared/bot-runtime-gate");

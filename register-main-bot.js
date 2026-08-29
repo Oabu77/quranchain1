@@ -1,3 +1,5 @@
+require("./shared/bot-runtime-gate");
+
 // Register main bot's 31 commands — retries every 60s until rate limit clears
 const https = require('https');
 const fs = require('fs');

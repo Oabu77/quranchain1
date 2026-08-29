@@ -1,3 +1,5 @@
+require("../shared/bot-runtime-gate");
+
 // ==========================================================
 // FungiMesh™ Discord Bot — Bio-Inspired Mesh Network
 // 340,000 nodes · 6 continents · Quantum encryption
@@ -427,3 +429,4 @@ client.on("entitlementDelete", e => { discordPremium.handleEntitlementDelete(e);
 process.on("SIGINT", () => { log("INFO", "Shutting down..."); client.destroy(); process.exit(0); });
 process.on("SIGTERM", () => { log("INFO", "Shutting down..."); client.destroy(); process.exit(0); });
 client.login(TOKEN);
+require("../shared/bot-runtime-gate");

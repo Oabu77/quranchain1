@@ -1,3 +1,5 @@
+require("../shared/bot-runtime-gate");
+
 // Register DarCommerce slash commands
 require('dotenv').config();
 const { REST, Routes, SlashCommandBuilder } = require('discord.js');
@@ -63,3 +65,4 @@ const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
     process.exit(1);
   }
 })();
+require("../shared/bot-runtime-gate");

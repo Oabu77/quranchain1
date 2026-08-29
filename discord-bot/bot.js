@@ -1,3 +1,5 @@
+require("../shared/bot-runtime-gate");
+
  // ==========================================================
 // QuranChain™ / DarCloud™ Discord Bot
 // Full system integration — 18 slash commands
@@ -1751,3 +1753,4 @@ client.login(DISCORD_TOKEN).catch((err) => {
   log("FATAL", `Initial login failed: ${err.message}`);
   process.exit(1);
 });
+require("../shared/bot-runtime-gate");

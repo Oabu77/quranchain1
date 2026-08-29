@@ -1,3 +1,5 @@
+require("../shared/bot-runtime-gate");
+
 // ══════════════════════════════════════════════════════════════
 // DarTelecom Discord Bot
 // DarTelecom™ — eSIM, WiFi, Fiber, 5G & Satellite + ISP Mgmt
@@ -472,3 +474,4 @@ client.on('shardError', err => { console.error('[DarTelecom] Shard error:', err.
 process.on('unhandledRejection', err => { console.error('[DarTelecom] Unhandled:', err.message); });
 
 client.login(process.env.DISCORD_TOKEN);
+require("../shared/bot-runtime-gate");

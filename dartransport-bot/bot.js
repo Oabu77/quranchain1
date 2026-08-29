@@ -1,3 +1,5 @@
+require("../shared/bot-runtime-gate");
+
 // ══════════════════════════════════════════════════════════════
 // DarTransport Discord Bot
 // DarTransport™ — Aviation, Airlines & Ground Transport
@@ -233,3 +235,4 @@ client.on('shardError', err => { console.error('[DarTransport] Shard error:', er
 process.on('unhandledRejection', err => { console.error('[DarTransport] Unhandled:', err.message); });
 
 client.login(process.env.DISCORD_TOKEN);
+require("../shared/bot-runtime-gate");

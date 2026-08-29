@@ -2,10 +2,6 @@ name: Build Dar Play Apps (public runner)
 
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - "play-apps/**"
-      - ".github/workflows/build-play-apps-public.yml"
 
 permissions:
   contents: read
@@ -22,26 +18,12 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.10.2"
-      - name: Configure upload signing
+      - name: Build eligible internal debug apps
         working-directory: play-apps
-        env:
-          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: |
-          test -n "$KEYSTORE_BASE64"
-          test -n "$KEY_ALIAS"
-          test -n "$STORE_PASSWORD"
-          test -n "$KEY_PASSWORD"
-          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > upload-keystore.jks
-          printf 'storeFile=upload-keystore.jks\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n' "$STORE_PASSWORD" "$KEY_ALIAS" "$KEY_PASSWORD" > keystore.properties
-      - name: Build signed app bundles
-        working-directory: play-apps
-        run: gradle bundleWalletRelease bundleLogisticsRelease bundleMeshtalkRelease bundleQuranchainRelease
+        run: gradle assembleMeshtalkDebug assembleQuranchainDebug
       - uses: actions/upload-artifact@v4
         with:
-          name: dar-play-aabs
-          path: play-apps/app/build/outputs/bundle/*Release/*.aab
+          name: dar-play-internal-debug-apks
+          path: play-apps/app/build/outputs/apk/*/debug/*.apk
           if-no-files-found: error
           retention-days: 14

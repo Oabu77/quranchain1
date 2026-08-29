@@ -1,3 +1,5 @@
+require("../shared/bot-runtime-gate");
+
 // ══════════════════════════════════════════════════════════════
 // DarCloud™ Autonomous Watchdog
 // Monitors API + Discord Bot, auto-heals, reports to Discord
@@ -224,3 +226,4 @@ setInterval(runChecks, CHECK_INTERVAL);
 // Keep alive
 process.on("SIGINT", () => { log("INFO", "Watchdog shutting down."); process.exit(0); });
 process.on("SIGTERM", () => { log("INFO", "Watchdog shutting down."); process.exit(0); });
+require("../shared/bot-runtime-gate");
