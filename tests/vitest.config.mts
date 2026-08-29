@@ -1,32 +1,28 @@
 import path from "node:path";
 import {
-	defineWorkersConfig,
+	cloudflareTest,
 	readD1Migrations,
-} from "@cloudflare/vitest-pool-workers/config";
+} from "@cloudflare/vitest-pool-workers";
+import { defineConfig } from "vitest/config";
 
-const migrationsPath = path.join(__dirname, "..", "migrations");
+const migrationsPath = path.join(import.meta.dirname, "..", "migrations");
 const migrations = await readD1Migrations(migrationsPath);
 
-export default defineWorkersConfig({
-	esbuild: {
-		target: "esnext",
-	},
-	test: {
-		setupFiles: ["./tests/apply-migrations.ts"],
-		poolOptions: {
-			workers: {
-				singleWorker: true,
-				wrangler: {
-					configPath: "../wrangler.jsonc",
-				},
-				miniflare: {
-					compatibilityFlags: ["experimental", "nodejs_compat"],
-					bindings: {
-						MIGRATIONS: migrations,
-						JWT_SECRET: "test-only-jwt-secret-do-not-use-in-production",
-					},
+export default defineConfig({
+	plugins: [
+		cloudflareTest({
+			wrangler: {
+				configPath: path.join(import.meta.dirname, "..", "wrangler.jsonc"),
+			},
+			miniflare: {
+				d1Databases: ["DB"],
+				bindings: {
+					MIGRATIONS: migrations,
 				},
 			},
-		},
+		}),
+	],
+	test: {
+		setupFiles: ["./tests/apply-migrations.ts"],
 	},
 });

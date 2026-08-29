@@ -1,15 +1,26 @@
 workflows:
-  dar-play-apps:
-    name: Dar Play Apps
+  android-internal-validation:
+    name: Android internal validation
     max_build_duration: 60
     instance_type: mac_mini_m2
     environment:
       java: 17
     scripts:
-      - name: Build Android App Bundles
+      - name: Configure Gradle wrapper
         script: |
           cd play-apps
           gradle wrapper --gradle-version 8.10.2
-          ./gradlew bundleWalletRelease bundleLogisticsRelease bundleMeshtalkRelease bundleQuranchainRelease
+      - name: Validate Android source
+        script: |
+          cd play-apps
+          ./gradlew lint
+      - name: Build internal debug packages only
+        script: |
+          cd play-apps
+          ./gradlew assembleMeshtalkDebug assembleQuranchainDebug
     artifacts:
-      - play-apps/app/build/outputs/bundle/*Release/*.aab
+      - play-apps/app/build/outputs/apk/*/debug/*.apk
+
+# No release AAB, signing, store upload, or publishing occurs in this workflow.
+# Wallet and Logistics remain research/internal previews until they have distinct
+# app-specific utility and satisfy current store policy.

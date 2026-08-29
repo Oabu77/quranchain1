@@ -4,76 +4,25 @@
 // This module maps subdomains to their landing page modules.
 
 import wwwPage from "../landing-pages/darcloud-www.js";
-import aiPage from "../landing-pages/darcloud-ai-assistant.js";
-import apiGatewayPage from "../landing-pages/darcloud-api-gateway.js";
-import blockchainPage from "../landing-pages/darcloud-blockchain.js";
+import quranTrackerPage from "../landing-pages/darcloud-quran-tracker.js";
 import checkoutPageModule from "../landing-pages/darcloud-checkout.js";
-import commercePage from "../landing-pages/darcloud-darcommerce.js";
-import defiPage from "../landing-pages/darcloud-dardefi.js";
-import eduPage from "../landing-pages/darcloud-daredu.js";
-import energyPage from "../landing-pages/darcloud-darenergy.js";
-import healthPage from "../landing-pages/darcloud-darhealth.js";
-import hrPage from "../landing-pages/darcloud-darhr.js";
-import lawPage from "../landing-pages/darcloud-darlaw.js";
-import mediaPage from "../landing-pages/darcloud-darmedia.js";
-import darnasPage from "../landing-pages/darcloud-darnas.js";
-import payPage from "../landing-pages/darcloud-darpay.js";
-import securityPage from "../landing-pages/darcloud-darsecurity.js";
-import telecomPage from "../landing-pages/darcloud-dartelecom.js";
-import tradePage from "../landing-pages/darcloud-dartrade.js";
 import transportPage from "../landing-pages/darcloud-dartransport.js";
-import enterprisePage from "../landing-pages/darcloud-enterprise.js";
 import hwcPage from "../landing-pages/darcloud-hwc.js";
-import meshPage from "../landing-pages/darcloud-mesh-status.js";
 import meshtalkPage from "../landing-pages/darcloud-meshtalk.js";
-import netPage from "../landing-pages/darcloud-net.js";
-import omaraiPage from "../landing-pages/darcloud-omarai.js";
 import realEstatePage from "../landing-pages/darcloud-realestate.js";
-import revenuePage from "../landing-pages/darcloud-revenue.js";
+import unavailablePage from "../landing-pages/darcloud-disabled-preview.js";
 
 type LandingPage = { fetch(request: Request): Promise<Response> };
 
-// SSO auth bar script injected into every landing page
-// Checks the darcloud_session cookie via /api/auth/session
-// Replaces "Sign In" nav links with user greeting + dashboard link
-const SSO_AUTH_SCRIPT = `<script>
-(function(){
-  var api='https://darcloud.host/api/auth/session';
-  fetch(api,{credentials:'include'}).then(function(r){return r.json()}).then(function(d){
-    if(!d.authenticated)return;
-    var u=d.user;
-    // Find and update "Sign In" links in nav
-    document.querySelectorAll('a[href*="/login"],a[href*="Sign In"],a[href*="sign-in"]').forEach(function(a){
-      if(a.closest('nav')||a.closest('.nav-links')){
-        a.textContent='\\u{1F44B} '+u.name;
-        a.href='https://darcloud.host/dashboard';
-        a.style.color='#10b981';
-      }
-    });
-    // Also match text-content based sign-in links
-    document.querySelectorAll('nav a, .nav-links a').forEach(function(a){
-      if(a.textContent.trim()==='Sign In'||a.textContent.trim()==='Login'){
-        a.textContent='\\u{1F44B} '+u.name;
-        a.href='https://darcloud.host/dashboard';
-        a.style.color='#10b981';
-      }
-    });
-  }).catch(function(){});
-})();
-</script>`;
-
-// Inject SSO script before </body> in landing page HTML
-async function injectSSOScript(response: Response): Promise<Response> {
-  const contentType = response.headers.get("content-type") || "";
-  if (!contentType.includes("text/html")) return response;
-
-  const html = await response.text();
-  const injected = html.replace("</body>", SSO_AUTH_SCRIPT + "</body>");
-
-  const newHeaders = new Headers(response.headers);
-  return new Response(injected, {
+// Do not inject account scripts into subdomain responses. Strip the internal
+// routing header and stream the original body unchanged.
+function finalizeLandingResponse(response: Response): Response {
+  const headers = new Headers(response.headers);
+  headers.delete("X-DarCloud-No-SSO");
+  return new Response(response.body, {
     status: response.status,
-    headers: newHeaders,
+    statusText: response.statusText,
+    headers,
   });
 }
 
@@ -81,40 +30,48 @@ async function injectSSOScript(response: Response): Promise<Response> {
 const SUBDOMAIN_MAP: Record<string, LandingPage> = {
   // Existing pages
   www: wwwPage,
-  ai: aiPage,
-  "api-gateway": apiGatewayPage,
-  blockchain: blockchainPage,
+  ai: unavailablePage,
+  "api-gateway": unavailablePage,
+  // The former explorer advertised fabricated live-chain activity. Until a
+  // real audited network exists, both names serve the local-only tracker.
+  blockchain: quranTrackerPage,
+  quranchain: quranTrackerPage,
   checkout: checkoutPageModule,
-  enterprise: enterprisePage,
+  enterprise: unavailablePage,
   hwc: hwcPage,
   halalwealthclub: hwcPage,
-  mesh: meshPage,
+  banking: hwcPage,
+  wallet: hwcPage,
+  darwallet: hwcPage,
+  mesh: unavailablePage,
   realestate: realEstatePage,
-  revenue: revenuePage,
+  revenue: unavailablePage,
 
   // New sector pages
-  pay: payPage,
+  pay: unavailablePage,
   meshtalk: meshtalkPage,
-  fungios: meshtalkPage,
-  community: darnasPage,
-  darnas: darnasPage,
-  law: lawPage,
-  commerce: commercePage,
-  trade: tradePage,
-  health: healthPage,
-  edu: eduPage,
-  energy: energyPage,
-  security: securityPage,
-  telecom: telecomPage,
+  fungios: unavailablePage,
+  community: unavailablePage,
+  darnas: unavailablePage,
+  law: unavailablePage,
+  commerce: unavailablePage,
+  trade: unavailablePage,
+  health: unavailablePage,
+  edu: unavailablePage,
+  energy: unavailablePage,
+  security: unavailablePage,
+  telecom: unavailablePage,
   transport: transportPage,
-  hr: hrPage,
-  media: mediaPage,
-  defi: defiPage,
-  omarai: omaraiPage,
+  logistics: transportPage,
+  darlogistics: transportPage,
+  hr: unavailablePage,
+  media: unavailablePage,
+  defi: unavailablePage,
+  omarai: unavailablePage,
 };
 
 // darcloud.net apex gets its own page
-const NET_PAGE: LandingPage = netPage;
+const NET_PAGE: LandingPage = wwwPage;
 
 /**
  * Handle subdomain routing for *.darcloud.host and darcloud.net.
@@ -125,12 +82,14 @@ export async function handleSubdomain(
   request: Request,
 ): Promise<Response | null> {
   const url = new URL(request.url);
-  const hostname = url.hostname;
+  // URL.hostnames may arrive with a DNS root-label suffix. Normalize that
+  // harmless representation before applying the exact DarCloud host policy.
+  const hostname = url.hostname.toLowerCase().replace(/\.$/, "");
 
   // darcloud.net apex → net landing page
   if (hostname === "darcloud.net") {
     const resp = await NET_PAGE.fetch(request);
-    return injectSSOScript(resp);
+    return finalizeLandingResponse(resp);
   }
 
   // *.darcloud.host or *.darcloud.net subdomains
@@ -139,11 +98,19 @@ export async function handleSubdomain(
   );
   if (subMatch) {
     const subdomain = subMatch[1];
-    const page = SUBDOMAIN_MAP[subdomain];
-    if (page) {
-      const resp = await page.fetch(request);
-      return injectSSOScript(resp);
-    }
+    const page = SUBDOMAIN_MAP[subdomain] || unavailablePage;
+    const resp = await page.fetch(request);
+    return finalizeLandingResponse(resp);
+  }
+
+  // A nested or otherwise malformed DarCloud subdomain must never fall through
+  // to apex APIs. Serve the fail-closed preview instead.
+  if (
+    hostname.endsWith(".darcloud.host") ||
+    hostname.endsWith(".darcloud.net")
+  ) {
+    const resp = await unavailablePage.fetch(request);
+    return finalizeLandingResponse(resp);
   }
 
   return null;

@@ -1,238 +1,115 @@
 import { SELF } from "cloudflare:test";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
+import app from "../../src/index";
 
-const TEST_USER = {
-	name: "Test User",
-	email: `test_${Date.now()}@darcloud.host`,
-	password: "securePassword123",
-	plan: "starter",
-};
-
-let ipCounter = 0;
-function uniqueIp() {
-	return `10.0.${Math.floor(ipCounter / 256)}.${ipCounter++ % 256}`;
-}
-
-async function signup(data?: Partial<typeof TEST_USER>) {
-	const payload = { ...TEST_USER, ...data };
-	return SELF.fetch("http://local.test/api/auth/signup", {
-		method: "POST",
-		headers: {
-			"Content-Type": "application/json",
-			"X-Forwarded-For": uniqueIp(),
+function trappedEnvironment() {
+	let touched = false;
+	const database = new Proxy({} as D1Database, {
+		get() {
+			touched = true;
+			throw new Error("A retired account route attempted to access D1");
 		},
-		body: JSON.stringify(payload),
 	});
+	return {
+		bindings: { DB: database } as Env,
+		wasTouched: () => touched,
+	};
 }
 
-async function login(email?: string, password?: string) {
-	return SELF.fetch("http://local.test/api/auth/login", {
-		method: "POST",
-		headers: {
-			"Content-Type": "application/json",
-			"X-Forwarded-For": uniqueIp(),
-		},
-		body: JSON.stringify({
-			email: email || TEST_USER.email,
-			password: password || TEST_USER.password,
-		}),
+const accountPaths = [
+	"/api/auth/signup",
+	"/api/auth/login",
+	"/api/auth/me",
+	"/api/auth/logout",
+	"/api/auth/session",
+];
+
+const methods = ["GET", "POST", "PUT", "PATCH", "DELETE"];
+
+describe("retired DarCloud account system", () => {
+	it("fails closed for every account path and method without touching D1", async () => {
+		const trap = trappedEnvironment();
+
+		for (const path of accountPaths) {
+			for (const method of methods) {
+				const response = await app.request(
+					`http://local.test${path}`,
+					{
+						method,
+						headers: {
+							"Content-Type": "application/json",
+							Authorization: "Bearer attacker.supplied.token",
+							Cookie: "darcloud_session=attacker.supplied.token",
+						},
+						...(method === "GET"
+							? {}
+							: {
+								body: JSON.stringify({
+									email: "person@example.com",
+									password: "must-not-be-read",
+								}),
+							}),
+					},
+					trap.bindings,
+				);
+				expect(response.status, `${method} ${path}`).toBe(410);
+				expect(await response.json(), `${method} ${path}`).toMatchObject({
+					accounts_enabled: false,
+					registration_enabled: false,
+					authentication_enabled: false,
+				});
+			}
+		}
+
+		expect(trap.wasTouched()).toBe(false);
 	});
-}
 
-describe("Auth API Integration Tests", () => {
-	beforeEach(() => {
-		vi.clearAllMocks();
-	});
-
-	// ── Signup ──
-	describe("POST /api/auth/signup", () => {
-		it("should create a new user and return JWT token", async () => {
-			const email = `signup_${Date.now()}@darcloud.host`;
-			const res = await signup({ email });
-			const body = await res.json<{
-				success: boolean;
-				user: { email: string; name: string; plan: string };
-				token: string;
-			}>();
-
-			expect(res.status).toBe(200);
-			expect(body.success).toBe(true);
-			expect(body.user.email).toBe(email.toLowerCase());
-			expect(body.user.name).toBe(TEST_USER.name);
-			expect(body.user.plan).toBe("starter");
-			expect(body.token).toBeTruthy();
-			expect(body.token.split(".")).toHaveLength(3);
-		});
-
-		it("should reject signup with missing fields", async () => {
-			const res = await SELF.fetch("http://local.test/api/auth/signup", {
+	it("rejects a cross-origin simple account write before routing", async () => {
+		const response = await SELF.fetch(
+			"http://local.test/api/auth/login",
+			{
 				method: "POST",
 				headers: {
-					"Content-Type": "application/json",
-					"X-Forwarded-For": uniqueIp(),
+					Origin: "https://evil.example",
+					"Content-Type": "text/plain",
 				},
-				body: JSON.stringify({ email: "test@test.com" }),
-			});
-
-			expect(res.status).toBe(400);
-			const body = await res.json<{ error: string }>();
-			expect(body.error).toContain("required");
-		});
-
-		it("should reject short passwords", async () => {
-			const res = await signup({
-				password: "short",
-				email: `short_${Date.now()}@test.com`,
-			});
-			expect(res.status).toBe(400);
-			const body = await res.json<{ error: string }>();
-			expect(body.error).toContain("8 characters");
-		});
-
-		it("should reject invalid email format", async () => {
-			const res = await signup({ email: "notanemail" });
-			expect(res.status).toBe(400);
-			const body = await res.json<{ error: string }>();
-			expect(body.error).toContain("email");
-		});
-
-		it("should reject duplicate signup", async () => {
-			const email = `dup_${Date.now()}@darcloud.host`;
-			await signup({ email });
-			const res = await signup({ email });
-			expect(res.status).toBe(409);
-			const body = await res.json<{ error: string }>();
-			expect(body.error).toContain("already exists");
-		});
+				body: JSON.stringify({ email: "person@example.com" }),
+			},
+		);
+		expect(response.status).toBe(403);
+		expect(response.headers.get("access-control-allow-origin")).toBeNull();
 	});
 
-	// ── Login ──
-	describe("POST /api/auth/login", () => {
-		it("should login with valid credentials and return JWT", async () => {
-			const email = `login_${Date.now()}@darcloud.host`;
-			await signup({ email });
+	it("retires account lookup and administrator APIs without touching D1", async () => {
+		const trap = trappedEnvironment();
 
-			const res = await login(email, TEST_USER.password);
-			const body = await res.json<{
-				success: boolean;
-				user: { email: string };
-				token: string;
-			}>();
+		for (const path of [
+			"/api/lookup?email=someone%40example.com",
+			"/api/admin/stats",
+			"/api/onboarding/status/anyone%40example.com",
+		]) {
+			const response = await app.request(
+				`http://local.test${path}`,
+				{},
+				trap.bindings,
+			);
+			expect(response.status, path).toBe(410);
+			expect(await response.text(), path).not.toContain("password_hash");
+		}
 
-			expect(res.status).toBe(200);
-			expect(body.success).toBe(true);
-			expect(body.user.email).toBe(email.toLowerCase());
-			expect(body.token).toBeTruthy();
-			expect(body.token.split(".")).toHaveLength(3);
-		});
-
-		it("should reject login with wrong password", async () => {
-			const email = `wrongpw_${Date.now()}@darcloud.host`;
-			await signup({ email });
-
-			const res = await login(email, "wrongPassword123");
-			expect(res.status).toBe(401);
-		});
-
-		it("should reject login for non-existent user", async () => {
-			const res = await login("nonexistent@darcloud.host", "password123");
-			expect(res.status).toBe(401);
-		});
+		expect(trap.wasTouched()).toBe(false);
 	});
 
-	// ── JWT Protected Endpoints ──
-	describe("GET /api/auth/me", () => {
-		it("should return user info with valid token", async () => {
-			const email = `me_${Date.now()}@darcloud.host`;
-			const signupRes = await signup({ email });
-			const { token } = await signupRes.json<{ token: string }>();
-
-			const res = await SELF.fetch("http://local.test/api/auth/me", {
-				headers: { Authorization: `Bearer ${token}` },
+	describe("HTML account pages", () => {
+		for (const path of ["/signup", "/login", "/dashboard", "/admin"]) {
+			it(`serves a non-interactive 410 notice at ${path}`, async () => {
+				const response = await SELF.fetch(`http://local.test${path}`);
+				expect(response.status).toBe(410);
+				const html = await response.text();
+				expect(html).toContain("unavailable");
+				expect(html).not.toContain("type=\"password\"");
+				expect(html).not.toContain("/api/auth/login");
 			});
-			const body = await res.json<{
-				success: boolean;
-				user: { email: string; name: string };
-			}>();
-
-			expect(res.status).toBe(200);
-			expect(body.success).toBe(true);
-			expect(body.user.email).toBe(email.toLowerCase());
-		});
-
-		it("should reject request without auth header", async () => {
-			const res = await SELF.fetch("http://local.test/api/auth/me");
-			expect(res.status).toBe(401);
-		});
-
-		it("should reject request with invalid token", async () => {
-			const res = await SELF.fetch("http://local.test/api/auth/me", {
-				headers: { Authorization: "Bearer invalid.token.here" },
-			});
-			expect(res.status).toBe(401);
-		});
-	});
-
-	// ── Admin Stats ──
-	describe("GET /api/admin/stats", () => {
-		it("should return stats with valid token", async () => {
-			const email = `admin_${Date.now()}@darcloud.host`;
-			const signupRes = await signup({ email });
-			const { token } = await signupRes.json<{ token: string }>();
-
-			const res = await SELF.fetch("http://local.test/api/admin/stats", {
-				headers: { Authorization: `Bearer ${token}` },
-			});
-			const body = await res.json<{
-				success: boolean;
-				stats: {
-					users: number;
-					contact_submissions: number;
-					hwc_applications: number;
-				};
-			}>();
-
-			expect(res.status).toBe(200);
-			expect(body.success).toBe(true);
-			expect(body.stats.users).toBeGreaterThanOrEqual(1);
-			expect(typeof body.stats.contact_submissions).toBe("number");
-			expect(typeof body.stats.hwc_applications).toBe("number");
-		});
-
-		it("should reject admin stats without auth", async () => {
-			const res = await SELF.fetch("http://local.test/api/admin/stats");
-			expect(res.status).toBe(401);
-		});
-	});
-
-	// ── HTML Pages ──
-	describe("HTML Page Routes", () => {
-		it("should serve signup page", async () => {
-			const res = await SELF.fetch("http://local.test/signup");
-			expect(res.status).toBe(200);
-			const html = await res.text();
-			expect(html).toContain("DarCloud");
-		});
-
-		it("should serve login page", async () => {
-			const res = await SELF.fetch("http://local.test/login");
-			expect(res.status).toBe(200);
-			const html = await res.text();
-			expect(html).toContain("DarCloud");
-		});
-
-		it("should serve dashboard page", async () => {
-			const res = await SELF.fetch("http://local.test/dashboard");
-			expect(res.status).toBe(200);
-			const html = await res.text();
-			expect(html).toContain("Dashboard");
-		});
-
-		it("should serve admin page", async () => {
-			const res = await SELF.fetch("http://local.test/admin");
-			expect(res.status).toBe(200);
-			const html = await res.text();
-			expect(html).toContain("Admin");
-		});
+		}
 	});
 });

@@ -1,3 +1,3 @@
 @echo off
-powershell -ExecutionPolicy Bypass -File "%~dp0auto_proxy_setup.ps1" -DisableProxy -SetWinHttp
-pause
+echo Legacy proxy configuration is quarantined during pre-release remediation.
+exit /b 78

@@ -1,0 +1,5 @@
+<resources>
+    <string name="connection_unavailable">Connection unavailable</string>
+    <string name="reconnect_message">Reconnect to continue using this pre-release app.</string>
+    <string name="try_again">Try again</string>
+</resources>

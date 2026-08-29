@@ -1,65 +1,114 @@
-// DarTransport — DarCloud Empire Landing Page (Cloudflare Worker)
-var src_default = {
+// Dar Logistics internal-test preview (Cloudflare Worker landing module)
+const SECURITY_HEADERS = {
+  "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'",
+  "X-Content-Type-Options": "nosniff",
+  "X-Frame-Options": "DENY",
+  "Referrer-Policy": "no-referrer",
+  "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=(), bluetooth=()",
+  "Cross-Origin-Opener-Policy": "same-origin",
+  "Cross-Origin-Resource-Policy": "same-origin",
+  "Cache-Control": "no-store",
+  "X-Robots-Tag": "noindex, nofollow, noarchive",
+  "X-DarCloud-No-SSO": "1",
+};
+
+function response(body, status, contentType, extraHeaders = {}) {
+  return new Response(body, {
+    status,
+    headers: {
+      ...SECURITY_HEADERS,
+      "Content-Type": contentType,
+      ...extraHeaders,
+    },
+  });
+}
+
+function json(data, status = 200, extraHeaders = {}) {
+  return response(
+    JSON.stringify(data),
+    status,
+    "application/json;charset=UTF-8",
+    extraHeaders,
+  );
+}
+
+const PREVIEW = `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Dar Logistics Internal Test</title>
+  <meta name="description" content="A fictional-data interface preview for internal product testing.">
+  <style>
+    :root{color-scheme:dark;--bg:#061018;--panel:#0c1b28;--line:#264157;--text:#f1f7fb;--muted:#a8bac7;--sky:#6bd0ff;--amber:#ffc766}
+    *{box-sizing:border-box}body{margin:0;background:linear-gradient(155deg,#10283a 0,var(--bg) 45%);color:var(--text);font:16px/1.55 system-ui,-apple-system,sans-serif;min-height:100vh}
+    main{width:min(920px,calc(100% - 2rem));margin:0 auto;padding:3rem 0 4rem}.tag{display:inline-block;border:1px solid #8b641b;background:#35270d;color:#ffde9c;border-radius:999px;padding:.35rem .75rem;font-weight:800;font-size:.78rem;letter-spacing:.06em;text-transform:uppercase}
+    h1{font-size:clamp(2.2rem,7vw,4.5rem);line-height:1.05;margin:.8rem 0}h1 span{color:var(--sky)}p{color:var(--muted)}.warning{border-left:4px solid var(--amber);background:#1e1c13;padding:1rem 1.2rem;border-radius:10px;margin:1.3rem 0}.warning strong{color:var(--amber)}
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:1rem;margin:1.5rem 0}.card{background:rgba(12,27,40,.94);border:1px solid var(--line);border-radius:16px;padding:1.2rem}.card small{color:var(--sky);font-weight:750;text-transform:uppercase;letter-spacing:.06em}.card h2{font-size:1.15rem;margin:.45rem 0}.card p{font-size:.92rem;margin:0}
+    .disabled{display:inline-block;margin-top:.8rem;border:1px solid var(--line);color:var(--muted);border-radius:8px;padding:.45rem .65rem;font-size:.8rem}a{color:var(--sky)}footer{margin-top:2rem;color:var(--muted);font-size:.85rem}
+  </style>
+</head>
+<body>
+  <main>
+    <span class="tag">Internal test · fictional data</span>
+    <h1>Dar <span>Logistics</span></h1>
+    <p>This page evaluates a possible workflow and information layout using invented examples.</p>
+    <div class="warning"><strong>No live operations.</strong><p>Nothing can be scheduled, moved, charged, or tracked here. The preview has no checkout connection, does not access device position, and is not connected to providers in the real world.</p></div>
+    <div class="grid" aria-label="Fictional interface samples">
+      <article class="card"><small>Example request</small><h2>Community center cleanup</h2><p>Sample reference DL-0001 · invented address · sample date</p><span class="disabled">Action unavailable</span></article>
+      <article class="card"><small>Example route</small><h2>Three-stop layout study</h2><p>Static map-free sequence for evaluating information hierarchy.</p><span class="disabled">Position access off</span></article>
+      <article class="card"><small>Example status</small><h2>Draft → reviewed → archived</h2><p>Illustrative states only; they do not describe real-world activity.</p><span class="disabled">Internal preview</span></article>
+    </div>
+    <p>All names, addresses, dates, routes, and status events displayed here are fictional.</p>
+    <footer><a href="https://darcloud.host">DarCloud home</a> · <a href="https://darcloud.host/privacy">Privacy</a> · <a href="https://darcloud.host/terms">Terms</a></footer>
+  </main>
+</body>
+</html>`;
+
+const src_default = {
   async fetch(request) {
     const url = new URL(request.url);
-    if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: { "Access-Control-Allow-Origin": "*" } });
-    if (url.pathname === "/health") return new Response(JSON.stringify({ status: "healthy", service: "DarTransport", platform: "Cloudflare Workers" }), { headers: { "Content-Type": "application/json" } });
-    return new Response(`<!DOCTYPE html>
-<html lang="en"><head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>DarTransport | Halal Logistics & Transportation | DarCloud Empire</title>
-<meta name="description" content="Shariah-compliant logistics, ride-sharing, and freight management connecting Muslim communities worldwide.">
-<style>
-:root{--bg:#07090f;--s1:#0d1117;--s2:#161b22;--bdr:#21262d;--cyan:#00d4ff;--emerald:#10b981;--gold:#f59e0b;--txt:#e6edf3;--muted:#8b949e}
-*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,system-ui,sans-serif;background:var(--bg);color:var(--txt);line-height:1.6}
-a{color:var(--cyan);text-decoration:none}a:hover{text-decoration:underline}
-.nav{display:flex;justify-content:space-between;align-items:center;padding:1rem 2rem;border-bottom:1px solid var(--bdr);background:var(--s1)}
-.nav-brand{font-size:1.3rem;font-weight:700;background:linear-gradient(135deg,var(--cyan),var(--emerald));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-.nav-links a{margin-left:1.5rem;color:var(--muted);font-size:.9rem}.nav-links a:hover{color:var(--cyan)}
-.hero{text-align:center;padding:5rem 2rem 3rem;background:linear-gradient(180deg,var(--s1) 0%,var(--bg) 100%)}
-.hero h1{font-size:2.8rem;font-weight:800;margin-bottom:1rem}.hero h1 span{background:linear-gradient(135deg,var(--cyan),var(--emerald));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-.hero p{color:var(--muted);font-size:1.15rem;max-width:700px;margin:0 auto 2rem}
-.btn{display:inline-block;padding:.75rem 2rem;border-radius:12px;font-weight:600;font-size:1rem;transition:all .3s;cursor:pointer;border:none}
-.btn-primary{background:linear-gradient(135deg,var(--emerald),var(--cyan));color:#000}.btn-primary:hover{opacity:.9;transform:translateY(-2px)}
-.btn-outline{border:1px solid var(--bdr);color:var(--muted);background:transparent}.btn-outline:hover{border-color:var(--cyan);color:var(--cyan)}
-.hero-btns{display:flex;gap:1rem;justify-content:center;flex-wrap:wrap}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1.5rem;padding:3rem 2rem;max-width:1200px;margin:0 auto}
-.card{background:var(--s1);border:1px solid var(--bdr);border-radius:16px;padding:2rem;transition:all .3s}.card:hover{border-color:var(--cyan);transform:translateY(-4px)}
-.card h3{font-size:1.2rem;margin-bottom:.5rem}.card p{color:var(--muted);font-size:.9rem}
-.card .icon{font-size:2rem;margin-bottom:1rem}
-.section{padding:3rem 2rem;max-width:1200px;margin:0 auto}.section h2{font-size:2rem;text-align:center;margin-bottom:.5rem}.section .sub{text-align:center;color:var(--muted);margin-bottom:2rem}
-.stats{display:flex;justify-content:center;gap:3rem;flex-wrap:wrap;padding:2rem}.stat{text-align:center}.stat .val{font-size:2.5rem;font-weight:800;color:var(--cyan)}.stat .label{color:var(--muted);font-size:.85rem}
-.pricing{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1.5rem;padding:2rem;max-width:900px;margin:0 auto}
-.price-card{background:var(--s1);border:1px solid var(--bdr);border-radius:16px;padding:2rem;text-align:center}
-.price-card.featured{border-color:var(--gold)}.price-card h3{margin-bottom:.5rem}.price-card .amount{font-size:2.5rem;font-weight:800;margin:1rem 0}.price-card .amount span{font-size:.9rem;color:var(--muted);font-weight:400}
-.price-card ul{list-style:none;text-align:left;margin:1rem 0}.price-card li{padding:.3rem 0;font-size:.9rem;color:var(--muted)}.price-card li::before{content:"\u2713 ";color:var(--emerald)}
-footer{text-align:center;padding:2rem;border-top:1px solid var(--bdr);color:var(--muted);font-size:.8rem;margin-top:3rem}
-footer a{color:var(--muted);margin:0 .5rem}
-</style>
-</head><body>
-<nav class="nav"><a href="/" class="nav-brand">\u2601\uFE0F t</a><div class="nav-links"><a href="https://darcloud.host">DarCloud</a><a href="https://darcloud.net">Pricing</a><a href="https://ai.darcloud.host">AI</a><a href="https://mesh.darcloud.host">Mesh</a><a href="https://api.darcloud.host/api">API</a><a href="https://discord.gg/darcloud" target="_blank" rel="noopener">Discord</a><a href="https://darcloud.host/login">Sign In</a><a href="https://darcloud.host/checkout/pro" style="background:linear-gradient(135deg,var(--emerald),var(--cyan));color:#000;padding:.4rem 1rem;border-radius:8px;font-weight:600">Get Started</a></div></nav>
-<section class="hero">
-  <p style="color:#0284c7;font-weight:600;margin-bottom:.5rem">Halal Logistics & Transportation</p>
-  <h1><span>DarTransport</span></h1>
-  <p>Shariah-compliant logistics, ride-sharing, and freight management connecting Muslim communities worldwide.</p>
-  <div class="hero-btns">
-    <a class="btn btn-primary" href="https://darcloud.host/checkout/pro">Get Started</a>
-    <a class="btn btn-outline" href="https://darcloud.host">Back to DarCloud</a>
-  </div>
-</section>
-<div class="stats"><div class="stat"><div class="val">190+</div><div class="label">Countries</div></div><div class="stat"><div class="val">100%</div><div class="label">Halal Chain</div></div><div class="stat"><div class="val">AI</div><div class="label">Route Optimization</div></div><div class="stat"><div class="val">Live</div><div class="label">Tracking</div></div></div>
-<section class="section">
-  <h2>Features</h2>
-  <p class="sub">Everything you need, built on Islamic principles</p>
-  <div class="grid"><div class="card"><div class="icon">\uD83D\uDE9A</div><h3>Halal Freight</h3><p>Dedicated halal logistics with certified handling for food and pharmaceutical products</p></div><div class="card"><div class="icon">\uD83D\uDE95</div><h3>Ride Sharing</h3><p>Muslim-friendly ride-sharing with prayer break scheduling and gender preferences</p></div><div class="card"><div class="icon">\uD83D\uDCE6</div><h3>Last Mile</h3><p>Community-based last-mile delivery through local mesh network couriers</p></div><div class="card"><div class="icon">\uD83D\uDDFA\uFE0F</div><h3>Route AI</h3><p>AI-optimized routing with mosque stops, halal rest areas, and prayer times</p></div><div class="card"><div class="icon">\uD83D\uDCCA</div><h3>Fleet Management</h3><p>Real-time fleet tracking, maintenance scheduling, and driver management</p></div><div class="card"><div class="icon">\u2693</div><h3>Shipping</h3><p>International shipping and customs clearance for halal commerce</p></div></div>
-</section>
-<section class="section">
-  <h2>Pricing</h2>
-  <p class="sub">Transparent, Shariah-compliant pricing</p>
-  <div class="pricing"><div class="price-card"><h3>Sender</h3><div class="amount">Pay per use</div><ul><li>Domestic shipping</li><li>Live tracking</li><li>Basic insurance</li></ul><a class="btn btn-primary" href="https://darcloud.host/checkout/pro" style="display:block;margin-top:1rem">Get Started</a></div><div class="price-card featured"><h3>Business</h3><div class="amount">$149<span>/mo</span></div><ul><li>Volume discounts</li><li>Fleet tools</li><li>API access</li><li>Priority</li></ul><a class="btn btn-primary" href="https://darcloud.host/checkout/pro" style="display:block;margin-top:1rem">Subscribe</a></div><div class="price-card"><h3>Logistics</h3><div class="amount">$699<span>/mo</span></div><ul><li>Full fleet mgmt</li><li>Custom routes</li><li>Cold chain</li><li>SLA</li></ul><a class="btn btn-primary" href="https://darcloud.host/checkout/pro" style="display:block;margin-top:1rem">Subscribe</a></div></div>
-</section>
-<footer><div style="max-width:1000px;margin:0 auto;display:flex;flex-wrap:wrap;justify-content:space-between;gap:1.5rem;padding:1rem 0;text-align:left;font-size:.8rem"><div><strong style="color:var(--txt)">Platform</strong><br><a href="https://darcloud.host">Home</a> \u00B7 <a href="https://darcloud.host/dashboard">Dashboard</a> \u00B7 <a href="https://darcloud.host/docs">API Docs</a> \u00B7 <a href="https://darcloud.net">Pricing</a></div><div><strong style="color:var(--txt)">Ecosystem</strong><br><a href="https://ai.darcloud.host">AI Fleet</a> \u00B7 <a href="https://mesh.darcloud.host">FungiMesh</a> \u00B7 <a href="https://blockchain.darcloud.host">Blockchain</a> \u00B7 <a href="https://enterprise.darcloud.host">Enterprise</a></div><div><strong style="color:var(--txt)">Community</strong><br><a href="https://discord.gg/darcloud" target="_blank" rel="noopener">Discord</a> \u00B7 <a href="https://halalwealthclub.darcloud.host">HWC</a> \u00B7 <a href="https://realestate.darcloud.host">Real Estate</a></div><div><strong style="color:var(--txt)">Legal</strong><br><a href="https://darcloud.host/privacy">Privacy</a> \u00B7 <a href="https://darcloud.host/terms">Terms</a></div></div><p style="margin-top:1rem">\u00A9 2026 DarCloud Empire. All rights reserved.</p><p style="margin-top:.3rem;font-size:.75rem">Shariah-Compliant \u00B7 Zero-Riba \u00B7 Revenue Split: 30/40/10/18/2 \u00B7 \u0628\u0650\u0633\u0652\u0645\u0650 \u0627\u0644\u0644\u0651\u064E\u0647\u0650 \u0627\u0644\u0631\u0651\u064E\u062D\u0652\u0645\u064E\u0646\u0650 \u0627\u0644\u0631\u0651\u064E\u062D\u0650\u064A\u0645\u0650</p></footer>
-</body></html>`, { headers: { "Content-Type": "text/html;charset=UTF-8" } });
-  }
+
+    if (request.method === "OPTIONS") {
+      return response(null, 204, "text/plain;charset=UTF-8", {
+        Allow: "GET, HEAD, OPTIONS",
+      });
+    }
+
+    if (request.method === "POST") {
+      return json(
+        { error: "Writes are disabled in this internal-test preview." },
+        405,
+        { Allow: "GET, HEAD, OPTIONS" },
+      );
+    }
+
+    if (request.method !== "GET" && request.method !== "HEAD") {
+      return json({ error: "Method not allowed" }, 405, {
+        Allow: "GET, HEAD, OPTIONS",
+      });
+    }
+
+    if (url.pathname === "/health") {
+      return json({
+        status: "ok",
+        service: "Dar Logistics preview",
+        mode: "internal-test",
+        fictional_data: true,
+        bookings_enabled: false,
+        shipments_enabled: false,
+        dispatch_enabled: false,
+        payments_enabled: false,
+        location_tracking_enabled: false,
+      });
+    }
+
+    if (url.pathname !== "/") {
+      return json({ error: "Not found", mode: "internal-test" }, 404);
+    }
+
+    return response(PREVIEW, 200, "text/html;charset=UTF-8");
+  },
 };
+
 export { src_default as default };

@@ -14,6 +14,23 @@ const dns = require("dns");
 
 // ── Hardware Discovery ─────────────────────────────────────
 function getHardwareProfile() {
+  return {
+    hostname: "unavailable",
+    platform: "quarantined",
+    arch: "unavailable",
+    kernel: "unavailable",
+    cpuModel: "unavailable",
+    cpuCores: 0,
+    totalMemoryMB: 0,
+    freeMemoryMB: 0,
+    uptime: 0,
+    interfaces: [],
+    wifiAdapters: [],
+    bluetooth: [],
+    usbDevices: [],
+    containers: [],
+  };
+
   const ifaces = os.networkInterfaces();
   const cpus = os.cpus();
   const mem = os.totalmem();
@@ -139,6 +156,9 @@ class CellTower {
 
   // ── Start all tower services ──
   async start() {
+    throw new Error(
+      "Legacy cell-tower networking is quarantined during pre-release remediation."
+    );
     console.log(`[CELL-TOWER] ${this.towerId} starting real network services...`);
 
     // 1. Scan hardware

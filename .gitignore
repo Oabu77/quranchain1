@@ -4,6 +4,10 @@
 shared/.env
 node_modules/
 .wrangler/
+**/.gradle/
+keystore.properties
+*.jks
+*.keystore
 tunnel/credentials.json
 logs/
 *.log

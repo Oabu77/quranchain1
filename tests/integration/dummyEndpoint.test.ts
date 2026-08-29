@@ -1,30 +1,19 @@
 import { SELF } from "cloudflare:test";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 describe("System Health API Integration Tests", () => {
-beforeEach(async () => {
-vi.clearAllMocks();
-});
-
-describe("GET /health", () => {
-it("should return system health status with component checks", async () => {
-const response = await SELF.fetch("http://local.test/health");
-const body = await response.json<{
-success: boolean;
-status: string;
-version: string;
-components: {
-database: { status: string };
-};
-execution_ms: number;
-}>();
-
-expect(response.status).toBe(200);
-expect(body.success).toBe(true);
-expect(body.status).toMatch(/healthy|degraded|unhealthy/);
-expect(body.version).toBe("5.4.0");
-expect(body.components.database.status).toBe("up");
-expect(body.execution_ms).toBeGreaterThanOrEqual(0);
-});
-});
+  it("reports only verified pre-release capabilities", async () => {
+    const response = await SELF.fetch("http://local.test/health");
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      status: "preview",
+      service: "DarCloud pre-release API",
+      version: "5.4.0",
+      mode: "restricted",
+      payments: false,
+      contracts: false,
+      operational_writes: false,
+      live_infrastructure_verified: false,
+    });
+  });
 });

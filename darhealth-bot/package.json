@@ -1,11 +1,12 @@
 {
   "name": "darhealth-bot",
   "version": "1.0.0",
-  "description": "DarHealth™ — Halal Healthcare & Telemedicine",
+  "private": true,
+  "description": "Quarantined pre-release Discord bot source; no live service is offered.",
   "main": "bot.js",
   "scripts": {
-    "start": "node bot.js",
-    "register": "node register-commands.js"
+    "start": "node ../shared/quarantined-command.js",
+    "register": "node ../shared/quarantined-command.js"
   },
   "dependencies": {
     "better-sqlite3": "^12.6.2",

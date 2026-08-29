@@ -1,25 +1,29 @@
 {
-	"compatibility_date": "2025-10-08",
+	"$schema": "./node_modules/wrangler/config-schema.json",
+	"compatibility_date": "2026-08-22",
 	"main": "src/index.ts",
-	"name": "quranchain1",
+	"name": "quranchain1-pre-release-validation",
+	"workers_dev": false,
+	"preview_urls": false,
 	"upload_source_maps": true,
 	"observability": {
-		"enabled": true
+		"enabled": true,
+		"logs": {
+			"enabled": true,
+			"head_sampling_rate": 0.1
+		},
+		"traces": {
+			"enabled": true,
+			"head_sampling_rate": 0.01
+		}
 	},
+	// Validation-only local binding. The production Worker name, routes, account
+	// identifiers, and remote D1 binding are deliberately absent from source.
 	"d1_databases": [
 		{
 			"binding": "DB",
-			"database_name": "openapi-template-db",
-			"database_id": "26b921d0-3226-485d-a105-dc820a9abdbc"
+			"database_name": "darcloud-pre-release-local",
+			"database_id": "00000000-0000-0000-0000-000000000000"
 		}
-	],
-	// DarCloud domain routes — apex + all subdomains.
-	// Subdomain routing is handled by src/subdomainRouter.ts which maps
-	// *.darcloud.host and *.darcloud.net subdomains to their landing pages.
-	"routes": [
-		{ "pattern": "darcloud.host/*", "zone_name": "darcloud.host" },
-		{ "pattern": "*.darcloud.host/*", "zone_name": "darcloud.host" },
-		{ "pattern": "darcloud.net/*", "zone_name": "darcloud.net" },
-		{ "pattern": "*.darcloud.net/*", "zone_name": "darcloud.net" }
 	]
 }
