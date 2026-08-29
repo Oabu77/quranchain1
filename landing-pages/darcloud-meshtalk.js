@@ -3,7 +3,10 @@ var src_default = {
   async fetch(request) {
     const url = new URL(request.url);
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: { "Access-Control-Allow-Origin": "*" } });
-    if (url.pathname === "/health") return new Response(JSON.stringify({ status: "healthy", service: "MeshTalk", platform: "Cloudflare Workers" }), { headers: { "Content-Type": "application/json" } });
+    if (url.pathname === "/health") return new Response(JSON.stringify({ status: "healthy", service: "MeshTalk", features: ["direct text messaging", "group text messaging"], end_to_end_encryption: false }), { headers: { "Content-Type": "application/json" } });
+    return Response.redirect("https://darcloud.host/messages", 302);
+    /* Legacy pre-release marketing page retained below for repository history;
+       it is unreachable until its unsupported feature claims are removed. */
     return new Response(`<!DOCTYPE html>
 <html lang="en"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">

@@ -95,6 +95,7 @@ const SUBDOMAIN_MAP: Record<string, LandingPage> = {
   // New sector pages
   pay: payPage,
   meshtalk: meshtalkPage,
+  fungios: meshtalkPage,
   community: darnasPage,
   darnas: darnasPage,
   law: lawPage,

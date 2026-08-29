@@ -268,16 +268,21 @@ auth.post("/auth/signup", async (c) => {
       ? plan
       : "starter";
 
-    await db
+    const created = await db
       .prepare(
         "INSERT INTO users (email, name, password_hash, plan) VALUES (?, ?, ?, ?)",
       )
       .bind(email.toLowerCase(), name, passwordHash, validPlan)
       .run();
 
+    const userId = Number(created.meta.last_row_id);
+    if (!Number.isInteger(userId) || userId <= 0) {
+      throw new Error("Account was created but its identifier could not be resolved");
+    }
+
     // Generate JWT token
     const secret = getJwtSecret(c.env);
-    const token = await signJWT({ email: email.toLowerCase(), name, plan: validPlan, role: "user" }, secret);
+    const token = await signJWT({ sub: userId, userId, email: email.toLowerCase(), name, plan: validPlan, role: "user" }, secret);
 
     const response = c.json({
       success: true,
@@ -335,7 +340,7 @@ auth.post("/auth/login", async (c) => {
     // Generate JWT token
     const secret = getJwtSecret(c.env);
     const token = await signJWT(
-      { email: user.email, name: user.name, plan: user.plan, role: "user", userId: user.id },
+      { sub: user.id, email: user.email, name: user.name, plan: user.plan, role: "user", userId: user.id },
       secret
     );
 

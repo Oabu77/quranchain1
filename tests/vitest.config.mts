@@ -23,6 +23,7 @@ export default defineWorkersConfig({
 					compatibilityFlags: ["experimental", "nodejs_compat"],
 					bindings: {
 						MIGRATIONS: migrations,
+						JWT_SECRET: "test-only-jwt-secret-do-not-use-in-production",
 					},
 				},
 			},

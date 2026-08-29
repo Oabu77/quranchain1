@@ -1,7 +1,12 @@
 import { Hono } from "hono";
 import { requireAuth } from "../auth";
 
-const messagingRouter = new Hono<{ Bindings: Env }>();
+type MessagingUser = { sub: number; email: string; name?: string };
+
+const messagingRouter = new Hono<{
+  Bindings: Env;
+  Variables: { user: MessagingUser };
+}>();
 
 // ── Auto-migrate messaging tables ──
 async function ensureMessagingTables(db: D1Database) {

@@ -198,7 +198,11 @@ async function handleLogin(e) {
     success.textContent = 'Welcome back! Redirecting...';
     success.style.display = 'block';
     localStorage.setItem('darcloud_token', data.token);
-    setTimeout(() => window.location.href = '/dashboard', 1500);
+    const requested = new URLSearchParams(window.location.search).get('redirect');
+    const destination = requested && requested.startsWith('/') && !requested.startsWith('//')
+      ? requested
+      : '/dashboard';
+    setTimeout(() => window.location.href = destination, 1500);
   } catch(err) {
     error.textContent = err.message;
     error.style.display = 'block';

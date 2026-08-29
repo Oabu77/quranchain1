@@ -323,7 +323,7 @@ ${MESSAGING_STYLES}
 
     try {
       // Look up user by email
-      const userResp = await apiFetch('/auth/lookup?email=' + encodeURIComponent(email));
+      const userResp = await apiFetch('/api/lookup?email=' + encodeURIComponent(email));
       if (!userResp.user) { errEl.textContent = 'User not found'; errEl.style.display = 'block'; return; }
 
       const convoData = await apiFetch('/messaging/conversations', {
