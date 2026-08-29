@@ -79,10 +79,9 @@ app.use("*", async (c, next) => {
   c.res.headers.set("Cache-Control", "no-store");
 });
 
-// ── Root redirect → www landing page ──
-app.get("/", (c) => {
-  return c.redirect("https://www.darcloud.host/", 302);
-});
+// Keep the apex start URL same-origin and safe so it can replace the legacy
+// root-scoped PWA identity without redirecting an installed app cross-origin.
+app.get("/", (c) => c.html(ONBOARDING_PAGE));
 
 // Replace the legacy root-scoped, cache-first QuranChain service worker. That
 // worker can otherwise keep serving a rejected financial/DeFi shell from the
@@ -121,11 +120,11 @@ self.addEventListener("fetch", (event) => {
 
 app.get("/manifest.json", (c) => c.json(
   {
-    id: "/onboarding",
+    id: "/",
     name: "DarCloud Preview Catalog",
     short_name: "DarCloud Preview",
     description: "Restricted, non-transactional DarCloud software previews.",
-    start_url: "/onboarding",
+    start_url: "/",
     scope: "/",
     display: "standalone",
     background_color: "#07090f",

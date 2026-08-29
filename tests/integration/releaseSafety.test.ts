@@ -114,11 +114,25 @@ describe("Release side-effect gates", () => {
       expect(manifest.status, origin).toBe(200);
       expect(manifest.headers.get("cache-control"), origin).toBe("no-store");
       const manifestText = await manifest.text();
-      expect(JSON.parse(manifestText), origin).toMatchObject({
+      const parsedManifest = JSON.parse(manifestText) as {
+        id: string;
+        name: string;
+        start_url: string;
+      };
+      expect(parsedManifest, origin).toMatchObject({
+        id: "/",
         name: "DarCloud Preview Catalog",
-        start_url: "/onboarding",
+        start_url: "/",
       });
       expect(manifestText, origin).not.toMatch(/token|trading|defi|finance/i);
+
+      const startPage = await SELF.fetch(
+        new URL(parsedManifest.start_url, origin),
+      );
+      expect(startPage.status, `${origin} manifest start_url`).toBe(200);
+      expect(await startPage.text(), origin).not.toMatch(
+        /token trading|defi platform|live trading/i,
+      );
     }
   });
 
