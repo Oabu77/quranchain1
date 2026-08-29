@@ -6,8 +6,10 @@ import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.graphics.Bitmap;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.view.View;
+import android.window.OnBackInvokedDispatcher;
 import android.webkit.CookieManager;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
@@ -35,6 +37,7 @@ public final class MainActivity extends Activity {
         ((TextView) findViewById(R.id.subtitle)).setText(getString(R.string.app_subtitle));
         findViewById(R.id.retry_button).setOnClickListener(v -> loadHome());
         configureWebView();
+        configureBackNavigation();
         if (state == null) loadHome(); else webView.restoreState(state);
     }
 
@@ -109,8 +112,27 @@ public final class MainActivity extends Activity {
         webView.setVisibility(View.GONE);
         offline.setVisibility(View.VISIBLE);
     }
+
+    private void configureBackNavigation() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
+                OnBackInvokedDispatcher.PRIORITY_DEFAULT,
+                this::handleBackNavigation
+            );
+        }
+    }
+
+    private void handleBackNavigation() {
+        if (webView != null && webView.canGoBack()) {
+            webView.goBack();
+        } else {
+            finishAfterTransition();
+        }
+    }
+
+    @SuppressLint("GestureBackNavigation")
     @Override public void onBackPressed() {
-        if (webView.canGoBack()) webView.goBack(); else super.onBackPressed();
+        handleBackNavigation();
     }
     @Override protected void onSaveInstanceState(Bundle out) {
         webView.saveState(out);
