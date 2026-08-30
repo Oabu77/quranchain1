@@ -1,0 +1,157 @@
+name: Deploy Omar AI Service
+
+on:
+  push:
+    branches: [codex/omar-ai-service-deploy]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-omar-ai-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  verify-and-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out approved Omar AI source
+        uses: actions/checkout@v4
+        with:
+          repository: Oabu77/omarAi
+          ref: codex/omar-ai-connected-v2
+          path: omar-ai
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify approved source revision
+        working-directory: omar-ai
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "c41961021b1881727fe7d00fc1e1bc65366d0424"
+          test "$(git rev-parse 'HEAD^{tree}')" = "e429b85e43c5d8cf85fb2bafea47df2346e1eff1"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: omar-ai/backend/package-lock.json
+
+      - name: Install and verify backend
+        working-directory: omar-ai/backend
+        run: |
+          npm ci
+          npm run check
+
+      - name: Resolve isolated D1 database
+        id: d1
+        working-directory: omar-ai/backend
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          WRANGLER_SEND_METRICS: "false"
+          WRANGLER_SEND_ERROR_REPORTS: "false"
+          FORCE_COLOR: "0"
+        run: |
+          set -euo pipefail
+          read_id() {
+            ./node_modules/.bin/wrangler d1 list --json | node -e '
+              const fs = require("fs");
+              const rows = JSON.parse(fs.readFileSync(0, "utf8"));
+              const matches = rows.filter((row) => row.name === "omar-ai");
+              if (matches.length > 1) process.exit(2);
+              if (matches.length === 1 && typeof matches[0].uuid === "string") {
+                process.stdout.write(matches[0].uuid);
+              }
+            '
+          }
+          database_id="$(read_id)"
+          if [ -z "$database_id" ]; then
+            ./node_modules/.bin/wrangler d1 create omar-ai
+            database_id="$(read_id)"
+          fi
+          [[ "$database_id" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]]
+          echo "database_id=$database_id" >> "$GITHUB_OUTPUT"
+
+      - name: Generate production Worker configuration
+        working-directory: omar-ai/backend
+        env:
+          OMAR_D1_DATABASE_ID: ${{ steps.d1.outputs.database_id }}
+        run: |
+          node - <<'NODE'
+          const fs = require("fs");
+          const id = process.env.OMAR_D1_DATABASE_ID;
+          if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id ?? "")) {
+            throw new Error("Invalid D1 database ID");
+          }
+          const config = {
+            name: "omar-ai-api",
+            main: "src/index.ts",
+            compatibility_date: "2026-08-30",
+            workers_dev: true,
+            d1_databases: [{
+              binding: "DB",
+              database_name: "omar-ai",
+              database_id: id,
+              migrations_dir: "migrations"
+            }],
+            ai: { binding: "AI" },
+            vars: {
+              ENVIRONMENT: "production",
+              ALLOWED_ORIGINS: "https://omar-ai-support.omarabunadi28.chatgpt.site",
+              JWT_ISSUER: "https://securetoken.google.com/banded-splicer-467704-c5",
+              JWT_AUDIENCE: "banded-splicer-467704-c5",
+              JWKS_URL: "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com",
+              MODEL_TEXT: "@cf/zai-org/glm-5.2",
+              RATE_LIMIT_PER_MINUTE: "120",
+              ASSISTANT_RATE_LIMIT_PER_MINUTE: "20",
+              ANDROID_PACKAGE_NAME: "com.darcloud.omarai",
+              PLAY_PRODUCT_ENTITLEMENTS: JSON.stringify({ omar_ai_pro: "pro", omar_ai_business: "business" }),
+              PLAY_LIFECYCLE_VERIFICATION_ENABLED: "false"
+            }
+          };
+          fs.writeFileSync("wrangler.jsonc", `${JSON.stringify(config, null, 2)}\n`);
+          NODE
+          ./node_modules/.bin/wrangler deploy --dry-run
+
+      - name: Apply D1 migrations
+        working-directory: omar-ai/backend
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          WRANGLER_SEND_METRICS: "false"
+          WRANGLER_SEND_ERROR_REPORTS: "false"
+          FORCE_COLOR: "0"
+        run: ./node_modules/.bin/wrangler d1 migrations apply DB --remote
+
+      - name: Deploy Worker with D1 and Workers AI bindings
+        working-directory: omar-ai/backend
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          WRANGLER_SEND_METRICS: "false"
+          WRANGLER_SEND_ERROR_REPORTS: "false"
+          FORCE_COLOR: "0"
+        run: ./node_modules/.bin/wrangler deploy
+
+      - name: Verify production liveness
+        env:
+          WORKER_URL: https://omar-ai-api.daralnas.workers.dev
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error \
+            --retry 10 --retry-delay 5 --retry-all-errors \
+            "$WORKER_URL/health/live" | node -e '
+              const fs = require("fs");
+              const body = JSON.parse(fs.readFileSync(0, "utf8"));
+              if (body?.ok !== true || body?.data?.service !== "omar-ai-api" || body?.data?.status !== "LIVE") {
+                process.exit(1);
+              }
+              console.log("Omar AI Worker is live.");
+            '
