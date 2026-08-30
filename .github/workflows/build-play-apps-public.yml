@@ -19,9 +19,12 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
+      - uses: android-actions/setup-android@v3
+      - name: Install Android API 36
+        run: sdkmanager "platforms;android-36" "build-tools;35.0.0"
       - uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: "8.10.2"
+          gradle-version: "8.13"
       - name: Configure upload signing
         working-directory: play-apps
         env:
@@ -36,12 +39,15 @@ jobs:
           test -n "$KEY_PASSWORD"
           printf '%s' "$KEYSTORE_BASE64" | base64 --decode > upload-keystore.jks
           printf 'storeFile=upload-keystore.jks\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n' "$STORE_PASSWORD" "$KEY_ALIAS" "$KEY_PASSWORD" > keystore.properties
-      - name: Build signed app bundles
+      - name: Build signed MeshTalk replacement bundle
         working-directory: play-apps
-        run: gradle bundleWalletRelease bundleLogisticsRelease bundleMeshtalkRelease bundleQuranchainRelease
+        run: gradle :app:bundleMeshtalkRelease
+      - name: Verify replacement bundle signature
+        working-directory: play-apps
+        run: jarsigner -verify -verbose -certs app/build/outputs/bundle/meshtalkRelease/app-meshtalk-release.aab
       - uses: actions/upload-artifact@v4
         with:
-          name: dar-play-aabs
-          path: play-apps/app/build/outputs/bundle/*Release/*.aab
+          name: meshtalk-secure-version-2
+          path: play-apps/app/build/outputs/bundle/meshtalkRelease/app-meshtalk-release.aab
           if-no-files-found: error
           retention-days: 14

@@ -39,6 +39,8 @@ android {
         create("meshtalk") {
             dimension = "app"
             applicationId = "com.darcloud.meshtalk"
+            versionCode = 2
+            versionName = "1.0.1"
             resValue("string", "app_name", "MeshTalk")
             resValue("string", "app_subtitle", "Resilient community communications")
             buildConfigField("String", "HOME_URL", "\"https://fungios.darcloud.host/\"")

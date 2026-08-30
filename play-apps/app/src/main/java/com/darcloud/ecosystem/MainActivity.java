@@ -46,10 +46,14 @@ public final class MainActivity extends Activity {
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
         s.setAllowFileAccess(false);
-        s.setAllowContentAccess(true);
+        s.setAllowContentAccess(false);
+        s.setAllowFileAccessFromFileURLs(false);
+        s.setAllowUniversalAccessFromFileURLs(false);
         s.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         s.setGeolocationEnabled(false);
         s.setMediaPlaybackRequiresUserGesture(true);
+        s.setJavaScriptCanOpenWindowsAutomatically(false);
+        s.setSupportMultipleWindows(false);
         s.setSafeBrowsingEnabled(true);
         CookieManager.getInstance().setAcceptCookie(true);
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, false);
@@ -69,12 +73,21 @@ public final class MainActivity extends Activity {
             @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest req) {
                 Uri uri = req.getUrl();
                 Uri home = Uri.parse(BuildConfig.HOME_URL);
-                if ("https".equalsIgnoreCase(uri.getScheme()) && home.getHost().equalsIgnoreCase(uri.getHost())) return false;
+                int port = uri.getPort();
+                boolean trusted = "https".equalsIgnoreCase(uri.getScheme())
+                        && uri.getUserInfo() == null
+                        && home.getHost().equalsIgnoreCase(uri.getHost())
+                        && (port == -1 || port == 443);
+                if (trusted) return false;
                 if (!"https".equalsIgnoreCase(uri.getScheme()) && !"http".equalsIgnoreCase(uri.getScheme())) {
                     Toast.makeText(MainActivity.this, "Unsupported link blocked", Toast.LENGTH_LONG).show();
                     return true;
                 }
-                try { startActivity(new Intent(Intent.ACTION_VIEW, uri)); }
+                Intent external = new Intent(Intent.ACTION_VIEW, uri);
+                external.addCategory(Intent.CATEGORY_BROWSABLE);
+                external.setComponent(null);
+                external.setSelector(null);
+                try { startActivity(external); }
                 catch (ActivityNotFoundException e) { Toast.makeText(MainActivity.this, "No compatible app installed", Toast.LENGTH_LONG).show(); }
                 return true;
             }
@@ -85,13 +98,8 @@ public final class MainActivity extends Activity {
                 progress.setVisibility(value >= 100 ? View.GONE : View.VISIBLE);
             }
             @Override public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback, FileChooserParams params) {
-                if (pendingFileCallback != null) pendingFileCallback.onReceiveValue(null);
-                pendingFileCallback = callback;
-                Intent picker = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-                picker.addCategory(Intent.CATEGORY_OPENABLE);
-                picker.setType("image/*");
-                try { startActivityForResult(picker, FILE_PICKER_REQUEST); return true; }
-                catch (ActivityNotFoundException e) { pendingFileCallback = null; return false; }
+                // Text-only MeshTalk V1 does not expose any caller-controlled content URI to WebView.
+                return false;
             }
         });
     }
