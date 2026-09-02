@@ -1,4 +1,4 @@
-import { SELF } from "cloudflare:test";
+import { env, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 
 const publicHosts = [
@@ -35,9 +35,9 @@ const publicHosts = [
 
 let uniqueCounter = 0;
 
-async function signup(plan = "starter") {
+async function signup(plan = "starter", requestedEmail?: string) {
   uniqueCounter += 1;
-  const email = `public_${Date.now()}_${uniqueCounter}@darcloud.host`;
+  const email = requestedEmail || `public_${Date.now()}_${uniqueCounter}@darcloud.host`;
   const response = await SELF.fetch("https://darcloud.host/api/auth/signup", {
     method: "POST",
     headers: {
@@ -105,6 +105,32 @@ describe("DarCloud public Worker", () => {
     const body = await response.json<{ user: { plan: string }; token: string }>();
     expect(body.user.plan).toBe("starter");
     expect(body.token).toBeTruthy();
+  });
+
+  it("grants a server-verified subscription when payment preceded account creation", async () => {
+    uniqueCounter += 1;
+    const email = `paid_before_signup_${Date.now()}_${uniqueCounter}@darcloud.host`;
+    await env.DB.prepare(
+      `INSERT INTO active_subscriptions (
+        discord_id, stripe_subscription_id, stripe_customer_id,
+        product, plan, amount_cents, status, current_period_start
+      ) VALUES (?, ?, ?, 'pro', 'pro', 4900, 'active', datetime('now'))`,
+    )
+      .bind(email, `sub_test_${uniqueCounter}`, `cus_test_${uniqueCounter}`)
+      .run();
+
+    const { response } = await signup("enterprise", email);
+    expect(response.status).toBe(200);
+    const body = await response.json<{ user: { plan: string } }>();
+    expect(body.user.plan).toBe("pro");
+
+    const stored = await env.DB.prepare(
+      "SELECT plan, darpay_customer_id FROM users WHERE email = ?",
+    )
+      .bind(email)
+      .first<{ plan: string; darpay_customer_id: string | null }>();
+    expect(stored?.plan).toBe("pro");
+    expect(stored?.darpay_customer_id).toBe(`cus_test_${uniqueCounter}`);
   });
 
   it("fails checkout closed when Stripe is not configured", async () => {
