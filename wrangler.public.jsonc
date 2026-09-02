@@ -1,0 +1,22 @@
+{
+  "compatibility_date": "2025-10-08",
+  "main": "src/publicEntry.ts",
+  "name": "openapi-template",
+  "upload_source_maps": true,
+  "observability": {
+    "enabled": true
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "openapi-template-db",
+      "database_id": "26b921d0-3226-485d-a105-dc820a9abdbc"
+    }
+  ],
+  "routes": [
+    { "pattern": "darcloud.host/*", "zone_name": "darcloud.host" },
+    { "pattern": "*.darcloud.host/*", "zone_name": "darcloud.host" },
+    { "pattern": "darcloud.net/*", "zone_name": "darcloud.net" },
+    { "pattern": "*.darcloud.net/*", "zone_name": "darcloud.net" }
+  ]
+}

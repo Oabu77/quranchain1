@@ -12,19 +12,20 @@ export default defineWorkersConfig({
     target: "esnext",
   },
   test: {
-    include: ["tests/integration/**/*.test.ts"],
+    include: ["tests/public/**/*.test.ts"],
     setupFiles: ["./tests/apply-migrations.ts"],
     poolOptions: {
       workers: {
         singleWorker: true,
         wrangler: {
-          configPath: "../wrangler.jsonc",
+          configPath: "../wrangler.public.jsonc",
         },
         miniflare: {
           compatibilityFlags: ["experimental", "nodejs_compat"],
           bindings: {
             MIGRATIONS: migrations,
-            JWT_SECRET: "test-only-jwt-secret-do-not-use-in-production",
+            JWT_SECRET: "test-only-public-jwt-secret-do-not-use-in-production",
+            DARCLOUD_ADMIN_EMAILS: "admin@darcloud.host",
           },
         },
       },
