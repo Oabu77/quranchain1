@@ -33,8 +33,6 @@ const subdomainPages: PageCase[] = [
 	{ name: "HWC", url: "https://hwc.darcloud.host/", markers: ["Wealth", "HWC"] },
 	{ name: "HWC alias", url: "https://halalwealthclub.darcloud.host/", markers: ["Wealth", "HWC"] },
 	{ name: "mesh", url: "https://mesh.darcloud.host/", markers: ["Mesh", "Network"] },
-	{ name: "MeshTalk", url: "https://meshtalk.darcloud.host/", markers: ["MeshTalk", "Fungi"] },
-	{ name: "FungiOS alias", url: "https://fungios.darcloud.host/", markers: ["MeshTalk", "Fungi"] },
 	{ name: "real estate", url: "https://realestate.darcloud.host/", markers: ["Real Estate", "realestate", "Property"] },
 	{ name: "revenue", url: "https://revenue.darcloud.host/", markers: ["Revenue", "revenue"] },
 	{ name: "Omar AI", url: "https://omarai.darcloud.host/", markers: ["Omar AI", "OmarAI", "Assistant"] },
@@ -52,6 +50,7 @@ const apexPages: PageCase[] = [
 	{ name: "privacy", url: "https://darcloud.host/privacy", markers: ["Privacy"], contentType: "text/html" },
 	{ name: "privacy alias", url: "https://darcloud.host/privacy-policy", markers: ["Privacy"], contentType: "text/html" },
 	{ name: "terms", url: "https://darcloud.host/terms", markers: ["Terms"], contentType: "text/html" },
+	{ name: "messages", url: "https://darcloud.host/messages", markers: ["Messages", "conversation"], contentType: "text/html" },
 ];
 
 function containsExpectedMarker(body: string, markers: string[]): boolean {
@@ -79,6 +78,15 @@ describe("DarCloud public page contract", () => {
 		const response = await SELF.fetch("https://darcloud.host/", { redirect: "manual" });
 		expect(response.status).toBe(302);
 		expect(response.headers.get("location")).toBe("https://www.darcloud.host/");
+	});
+
+	it.each([
+		["MeshTalk", "https://meshtalk.darcloud.host/"],
+		["FungiOS", "https://fungios.darcloud.host/"],
+	])("redirects the %s alias to the canonical messaging page", async (_name, url) => {
+		const response = await SELF.fetch(url, { redirect: "manual" });
+		expect(response.status).toBe(302);
+		expect(response.headers.get("location")).toBe("https://darcloud.host/messages");
 	});
 
 	for (const page of subdomainPages) {
