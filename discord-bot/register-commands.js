@@ -1,7 +1,7 @@
 // ==========================================================
 // QuranChain™ / DarCloud™ Discord Bot — Slash Command Registration
 // ==========================================================
-const { REST, Routes, SlashCommandBuilder } = require("discord.js");
+const { REST, Routes, SlashCommandBuilder, PermissionFlagsBits } = require("discord.js");
 const { readFileSync } = require("fs");
 const { resolve } = require("path");
 
@@ -31,7 +31,8 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName("stats")
-    .setDescription("Admin dashboard stats (users, contracts, companies, IP)"),
+    .setDescription("Admin dashboard stats (users, contracts, companies, IP)")
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 
   // ── AI Fleet ──
   new SlashCommandBuilder()
@@ -66,6 +67,7 @@ const commands = [
   new SlashCommandBuilder()
     .setName("task-create")
     .setDescription("Create a new infrastructure task")
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .addStringOption((opt) => opt.setName("name").setDescription("Task name").setRequired(true))
     .addStringOption((opt) => opt.setName("slug").setDescription("URL slug").setRequired(true))
     .addStringOption((opt) => opt.setName("description").setDescription("Task description").setRequired(false)),
@@ -99,7 +101,8 @@ const commands = [
   // ── Backups ──
   new SlashCommandBuilder()
     .setName("backups")
-    .setDescription("List backup registry with mesh replication status"),
+    .setDescription("List backup registry with mesh replication status")
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 
   // ── Minecraft ──
   new SlashCommandBuilder()
@@ -109,11 +112,13 @@ const commands = [
   // ── Multipass VMs ──
   new SlashCommandBuilder()
     .setName("vms")
-    .setDescription("List Multipass VM fleet"),
+    .setDescription("List Multipass VM fleet")
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 
   new SlashCommandBuilder()
     .setName("fleet-health")
-    .setDescription("Overall VM fleet capacity and health"),
+    .setDescription("Overall VM fleet capacity and health")
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 
   // ── Legal ──
   new SlashCommandBuilder()
@@ -124,6 +129,7 @@ const commands = [
   new SlashCommandBuilder()
     .setName("service")
     .setDescription("Manage PM2 services (start/stop/restart/status/logs)")
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .addStringOption((opt) =>
       opt.setName("action").setDescription("Action to perform").setRequired(true)
         .addChoices(
@@ -146,6 +152,7 @@ const commands = [
   new SlashCommandBuilder()
     .setName("docker")
     .setDescription("Manage Docker containers (start/stop/restart/logs/build)")
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .addStringOption((opt) =>
       opt.setName("action").setDescription("Action to perform").setRequired(true)
         .addChoices(
@@ -171,11 +178,13 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName("system")
-    .setDescription("Full system overview — PM2 + Docker + API + Bot + Resources"),
+    .setDescription("Full system overview — PM2 + Docker + API + Bot + Resources")
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 
   new SlashCommandBuilder()
     .setName("deploy")
     .setDescription("Deploy or redeploy services")
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .addStringOption((opt) =>
       opt.setName("target").setDescription("What to deploy").setRequired(true)
         .addChoices(
@@ -190,6 +199,7 @@ const commands = [
   new SlashCommandBuilder()
     .setName("logs")
     .setDescription("View service logs")
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .addStringOption((opt) =>
       opt.setName("source").setDescription("Log source").setRequired(true)
         .addChoices(
@@ -207,6 +217,7 @@ const commands = [
   new SlashCommandBuilder()
     .setName("agent")
     .setDescription("AI agent — describe a task in natural language")
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .addStringOption((opt) =>
       opt.setName("task").setDescription("What should the agent do? e.g. 'restart everything' or 'check system health'").setRequired(true)
     ),
@@ -214,6 +225,7 @@ const commands = [
   new SlashCommandBuilder()
     .setName("git")
     .setDescription("Git operations — status, pull, diff, log")
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .addStringOption((opt) =>
       opt.setName("action").setDescription("Git action").setRequired(true)
         .addChoices(
@@ -227,7 +239,8 @@ const commands = [
   // ── Admin ──
   new SlashCommandBuilder()
     .setName("bootstrap")
-    .setDescription("Seed/reseed all 101 companies, contracts, IP, and legal filings"),
+    .setDescription("Seed/reseed all 101 companies, contracts, IP, and legal filings")
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 
   // ── Masjid & Prayer ──
   new SlashCommandBuilder()
@@ -299,17 +312,21 @@ const commands = [
   new SlashCommandBuilder()
     .setName("founder")
     .setDescription("👑 Founder Console — natural language AI command center")
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .addStringOption((opt) => opt.setName("command").setDescription("Tell the AI what to do (natural language)").setRequired(true)),
   new SlashCommandBuilder()
     .setName("founder-dashboard")
-    .setDescription("📊 Founder Dashboard — full empire overview & KPIs"),
+    .setDescription("📊 Founder Dashboard — full empire overview & KPIs")
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
   new SlashCommandBuilder()
     .setName("founder-deploy")
     .setDescription("🚀 Deploy services, bots, or infrastructure")
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .addStringOption((opt) => opt.setName("target").setDescription("What to deploy (e.g. 'all bots', 'darcommerce', 'mesh nodes')").setRequired(true)),
   new SlashCommandBuilder()
     .setName("founder-exec")
     .setDescription("⚡ Execute a system command or task")
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .addStringOption((opt) => opt.setName("task").setDescription("Task to execute (natural language)").setRequired(true)),
   new SlashCommandBuilder().setName("premium").setDescription("⭐ View your DarCloud Premium status & upgrade"),
   new SlashCommandBuilder().setName("shop").setDescription("🛒 DarCloud Shop — browse & buy premium subscriptions"),
