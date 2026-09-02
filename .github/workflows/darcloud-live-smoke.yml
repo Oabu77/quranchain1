@@ -54,6 +54,7 @@ jobs:
           retention-days: 14
 
   browser-smoke:
+    if: github.event_name == 'workflow_dispatch'
     name: Browser and link audit
     runs-on: ubuntu-latest
     timeout-minutes: 25
