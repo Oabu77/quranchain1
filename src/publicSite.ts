@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import type { Context, Next } from "hono";
+import type { Context } from "hono";
 import {
   SIGNUP_PAGE,
   LOGIN_PAGE,
@@ -56,13 +56,11 @@ function appendVary(headers: Headers, value: string): void {
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
-  if (!values.some((item) => item.toLowerCase() === value.toLowerCase())) {
-    values.push(value);
-  }
+  if (!values.some((item) => item.toLowerCase() === value.toLowerCase())) values.push(value);
   if (values.length > 0) headers.set("Vary", values.join(", "));
 }
 
-function applyPublicHeaders(response: Response, origin: string, apiPath: boolean): Response {
+function withPublicHeaders(response: Response, origin: string, noStore: boolean): Response {
   const headers = new Headers(response.headers);
   for (const name of [
     "access-control-allow-origin",
@@ -86,9 +84,9 @@ function applyPublicHeaders(response: Response, origin: string, apiPath: boolean
   headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=(self)");
   headers.set(
     "Content-Security-Policy",
-    "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self' https://checkout.stripe.com; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https://*.darcloud.host https://*.darcloud.net https://api.stripe.com; upgrade-insecure-requests",
+    "default-src 'self' https: data:; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self' https://checkout.stripe.com; script-src 'self' 'unsafe-inline' https:; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: https:; font-src 'self' data: https:; connect-src 'self' https://*.darcloud.host https://*.darcloud.net https://api.stripe.com; upgrade-insecure-requests",
   );
-  if (apiPath) headers.set("Cache-Control", "no-store");
+  if (noStore) headers.set("Cache-Control", "no-store");
 
   return new Response(response.body, {
     status: response.status,
@@ -118,7 +116,11 @@ app.use("*", async (c, next) => {
   }
 
   await next();
-  c.res = applyPublicHeaders(c.res, origin, path.startsWith("/api/") || path.startsWith("/messaging/"));
+  c.res = withPublicHeaders(
+    c.res,
+    origin,
+    path.startsWith("/api/") || path.startsWith("/messaging/"),
+  );
 });
 
 app.use("*", async (c, next) => {
@@ -133,35 +135,35 @@ app.use("*", async (c, next) => {
 
 app.use("*", async (c, next) => {
   const url = new URL(c.req.url);
-  const isSubdomain = isDarCloudSubdomain(url.hostname);
-  const isNetApex = url.hostname === "darcloud.net";
-
-  if (!isSubdomain && !isNetApex) {
+  const subdomain = isDarCloudSubdomain(url.hostname);
+  const netApex = url.hostname === "darcloud.net";
+  if (!subdomain && !netApex) {
     await next();
     return;
   }
 
-  const isRead = c.req.method === "GET" || c.req.method === "HEAD";
-  const isApiPath = url.pathname.startsWith("/api/") || url.pathname.startsWith("/messaging/");
+  const readOnly = c.req.method === "GET" || c.req.method === "HEAD";
+  const applicationPath = url.pathname.startsWith("/api/") || url.pathname.startsWith("/messaging/");
 
-  if (!isRead) {
-    const safeWrite = SAFE_SUBDOMAIN_WRITE_PATHS.has(url.pathname) || url.pathname.startsWith("/messaging/");
-    if (!safeWrite) return c.json({ error: "This operation is not available on the public site" }, 405);
+  if (!readOnly) {
+    const permitted = SAFE_SUBDOMAIN_WRITE_PATHS.has(url.pathname) || url.pathname.startsWith("/messaging/");
+    if (!permitted) {
+      return c.json({ error: "This operation is not available on the public site" }, 405);
+    }
     await next();
     return;
   }
 
-  if (isApiPath) {
+  if (applicationPath) {
     await next();
     return;
   }
 
   if (url.hostname === "checkout.darcloud.host" || url.hostname === "checkout.darcloud.net") {
-    if (url.pathname === "/" || url.pathname === "/checkout") {
-      return c.html(checkoutPage("pro"));
-    }
+    if (url.pathname === "/" || url.pathname === "/checkout") return c.html(checkoutPage("pro"));
     if (url.pathname.startsWith("/checkout/")) {
-      return c.html(checkoutPage(url.pathname.split("/").filter(Boolean).at(-1) || "pro"));
+      const plan = url.pathname.split("/").filter(Boolean).at(-1) || "pro";
+      return c.html(checkoutPage(plan));
     }
     if (url.pathname === "/success") {
       return c.html(pendingCheckoutPage(url.searchParams.get("session_id") || ""));
@@ -170,27 +172,26 @@ app.use("*", async (c, next) => {
     return c.notFound();
   }
 
-  const response = await handleSubdomain(c.req.raw);
-  if (response) return response;
-  if (isSubdomain || isNetApex) return c.notFound();
-  await next();
+  const routed = await handleSubdomain(c.req.raw);
+  if (routed) return routed;
+  return c.notFound();
 });
 
 function simplePage(title: string, body: string): string {
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title} | DarCloud</title><style>:root{color-scheme:dark;background:#07090f;color:#e6edf3;font-family:Inter,system-ui,sans-serif}body{margin:0;min-height:100vh;background:linear-gradient(180deg,#07111c,#07090f)}main{width:min(900px,calc(100% - 2rem));margin:auto;padding:3rem 0}a{color:#55d7ff}.card{background:#0d1520;border:1px solid #243142;border-radius:16px;padding:1.5rem}h1{font-size:clamp(2rem,6vw,3.5rem)}p{line-height:1.7;color:#c4cedd}code{overflow-wrap:anywhere}</style></head><body><main><div class="card"><h1>${title}</h1>${body}</div></main></body></html>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title} | DarCloud</title><style>:root{color-scheme:dark;background:#07090f;color:#e6edf3;font-family:Inter,system-ui,sans-serif}body{margin:0;min-height:100vh;background:linear-gradient(180deg,#07111c,#07090f)}main{width:min(900px,calc(100% - 2rem));margin:auto;padding:3rem 0}a{color:#55d7ff}.card{background:#0d1520;border:1px solid #243142;border-radius:16px;padding:1.5rem}h1{font-size:clamp(2rem,6vw,3.5rem)}p,li{line-height:1.7;color:#c4cedd}code,pre{overflow-wrap:anywhere}</style></head><body><main><div class="card"><h1>${title}</h1>${body}</div></main></body></html>`;
 }
 
 function pendingCheckoutPage(sessionId: string): string {
-  const safeSession = sessionId.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 128);
+  const reference = sessionId.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 128) || "pending";
   return simplePage(
     "Payment received — verification pending",
-    `<p>Your secure checkout returned successfully. DarCloud activates paid service only after Stripe sends a verified payment webhook.</p><p>Checkout reference: <code>${safeSession || "pending"}</code></p><p><a href="/dashboard">Open your dashboard</a> · <a href="https://www.darcloud.host/">DarCloud home</a></p>`,
+    `<p>Your secure checkout returned successfully. DarCloud activates paid service only after Stripe sends a verified payment webhook.</p><p>Checkout reference: <code>${reference}</code></p><p><a href="/dashboard">Open your dashboard</a> · <a href="https://www.darcloud.host/">DarCloud home</a></p>`,
   );
 }
 
 const PUBLIC_ADMIN_PAGE = simplePage(
   "DarCloud Admin",
-  `<p id="adminStatus">Sign in with an authorized administrator account to view operational statistics.</p><pre id="adminData" style="white-space:pre-wrap;overflow-wrap:anywhere"></pre><p><a href="/dashboard">Back to dashboard</a></p><script>(async()=>{const token=localStorage.getItem('darcloud_token');if(!token){document.getElementById('adminStatus').textContent='Admin sign-in required.';return;}const r=await fetch('/api/admin/stats',{headers:{Authorization:'Bearer '+token}});if(r.status===403){document.getElementById('adminStatus').textContent='Admin access is required for this page.';return;}if(!r.ok){document.getElementById('adminStatus').textContent='Admin data is temporarily unavailable.';return;}const data=await r.json();document.getElementById('adminStatus').textContent='Authorized admin overview';document.getElementById('adminData').textContent=JSON.stringify(data,null,2);})().catch(()=>{document.getElementById('adminStatus').textContent='Admin data is temporarily unavailable.';});</script>`,
+  `<p id="adminStatus">Sign in with an authorized administrator account to view operational statistics.</p><pre id="adminData" style="white-space:pre-wrap"></pre><p><a href="/dashboard">Back to dashboard</a></p><script>(async()=>{const token=localStorage.getItem('darcloud_token');if(!token){document.getElementById('adminStatus').textContent='Admin sign-in required.';return;}const r=await fetch('/api/admin/stats',{headers:{Authorization:'Bearer '+token}});if(r.status===403){document.getElementById('adminStatus').textContent='Admin access is required for this page.';return;}if(!r.ok){document.getElementById('adminStatus').textContent='Admin data is temporarily unavailable.';return;}const data=await r.json();document.getElementById('adminStatus').textContent='Authorized admin overview';document.getElementById('adminData').textContent=JSON.stringify(data,null,2);})().catch(()=>{document.getElementById('adminStatus').textContent='Admin data is temporarily unavailable.';});</script>`,
 );
 
 const DOCS_PAGE = simplePage(
@@ -198,14 +199,10 @@ const DOCS_PAGE = simplePage(
   `<p>This public Worker intentionally exposes only account, contact, privacy, secure checkout, verified Stripe webhook, and authenticated messaging routes.</p><ul><li>GET /health</li><li>POST /api/auth/signup</li><li>POST /api/auth/login</li><li>GET /api/auth/session</li><li>GET /api/auth/me</li><li>POST /api/contact</li><li>POST /api/hwc/apply</li><li>POST /api/privacy-request</li><li>POST /api/checkout/session</li><li>POST /api/stripe/portal</li><li>POST /api/stripe/webhook</li><li>Authenticated /messaging routes</li></ul><p>Infrastructure control-plane routes are not published from this Worker.</p>`,
 );
 
-async function forwardToAuth(
-  c: Context<PublicAppEnv>,
-  internalPath: string,
-  body?: string,
-): Promise<Response> {
+async function forwardToAuth(c: Context<PublicAppEnv>, path: string, body?: string): Promise<Response> {
   const target = new URL(c.req.url);
-  target.pathname = internalPath;
-  target.search = internalPath === "/lookup" ? new URL(c.req.url).search : "";
+  target.pathname = path;
+  target.search = path === "/lookup" ? new URL(c.req.url).search : "";
   const headers = new Headers(c.req.raw.headers);
   headers.delete("content-length");
   const request = new Request(target.toString(), {
@@ -214,6 +211,11 @@ async function forwardToAuth(
     body,
   });
   return auth.fetch(request, c.env, c.executionCtx);
+}
+
+async function proxyAuthBody(c: Context<PublicAppEnv>, path: string): Promise<Response> {
+  const body = ["GET", "HEAD"].includes(c.req.method) ? undefined : await c.req.text();
+  return forwardToAuth(c, path, body);
 }
 
 app.get("/", (c) => c.redirect("https://www.darcloud.host/", 302));
@@ -268,24 +270,13 @@ app.post("/api/auth/signup", async (c) => {
   }
   return forwardToAuth(c, "/auth/signup", JSON.stringify({ ...body, plan: "starter" }));
 });
-
-app.post("/api/auth/login", (c) => forwardToAuth(c, "/auth/login", c.req.raw.body ? undefined : undefined));
-app.post("/api/auth/login", async (c, next) => {
-  await next();
-});
-
-async function proxyBody(c: Context<PublicAppEnv>, path: string): Promise<Response> {
-  const body = ["GET", "HEAD"].includes(c.req.method) ? undefined : await c.req.text();
-  return forwardToAuth(c, path, body);
-}
-
-app.post("/api/auth/login", (c) => proxyBody(c, "/auth/login"));
-app.post("/api/auth/logout", (c) => proxyBody(c, "/auth/logout"));
-app.get("/api/auth/session", (c) => proxyBody(c, "/auth/session"));
-app.get("/api/auth/me", (c) => proxyBody(c, "/auth/me"));
-app.get("/api/lookup", (c) => proxyBody(c, "/lookup"));
-app.post("/api/contact", (c) => proxyBody(c, "/contact"));
-app.post("/api/hwc/apply", (c) => proxyBody(c, "/hwc/apply"));
+app.post("/api/auth/login", (c) => proxyAuthBody(c, "/auth/login"));
+app.post("/api/auth/logout", (c) => proxyAuthBody(c, "/auth/logout"));
+app.get("/api/auth/session", (c) => proxyAuthBody(c, "/auth/session"));
+app.get("/api/auth/me", (c) => proxyAuthBody(c, "/auth/me"));
+app.get("/api/lookup", (c) => proxyAuthBody(c, "/lookup"));
+app.post("/api/contact", (c) => proxyAuthBody(c, "/contact"));
+app.post("/api/hwc/apply", (c) => proxyAuthBody(c, "/hwc/apply"));
 
 app.post("/api/checkout/session", createCheckoutSession);
 app.post("/api/stripe/portal", createCustomerPortal);
@@ -376,7 +367,6 @@ app.get("/api/admin/stats", async (c) => {
 });
 
 app.route("/messaging", messagingRouter);
-
 app.notFound((c) => c.json({ error: "Not found" }, 404));
 app.onError((_error, c) => c.json({ error: "Internal service error" }, 500));
 
