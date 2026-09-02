@@ -118,6 +118,33 @@ function rebuiltAuthRequest(request: Request, body: string): Request {
   });
 }
 
+async function reconcileEntitlement(
+  env: PublicBindings,
+  email: string,
+  entitlement: VerifiedEntitlement & { hostingPlan: "pro" | "enterprise" },
+): Promise<void> {
+  const user = await env.DB.prepare(
+    "SELECT id FROM users WHERE lower(email) = ? LIMIT 1",
+  )
+    .bind(email)
+    .first<{ id: number }>();
+  const userId = Number(user?.id || 0);
+  if (!Number.isInteger(userId) || userId <= 0) return;
+
+  await env.DB.batch([
+    env.DB.prepare(
+      `UPDATE users
+       SET plan = ?, darpay_customer_id = ?, updated_at = datetime('now')
+       WHERE id = ? AND lower(email) = ?`,
+    ).bind(entitlement.hostingPlan, entitlement.stripe_customer_id, userId, email),
+    env.DB.prepare(
+      `UPDATE active_subscriptions
+       SET user_id = ?, updated_at = datetime('now')
+       WHERE stripe_subscription_id = ?`,
+    ).bind(userId, entitlement.stripe_subscription_id),
+  ]);
+}
+
 async function handleSignup(
   request: Request,
   env: PublicBindings,
@@ -160,22 +187,7 @@ async function handleSignup(
 
   if (response.ok && entitlement) {
     try {
-      const payload = await response.clone().json<{ user?: { id?: number } }>();
-      const userId = Number(payload.user?.id || 0);
-      if (Number.isInteger(userId) && userId > 0) {
-        await env.DB.batch([
-          env.DB.prepare(
-            `UPDATE users
-             SET plan = ?, darpay_customer_id = ?, updated_at = datetime('now')
-             WHERE id = ? AND lower(email) = ?`,
-          ).bind(entitlement.hostingPlan, entitlement.stripe_customer_id, userId, email),
-          env.DB.prepare(
-            `UPDATE active_subscriptions
-             SET user_id = ?, updated_at = datetime('now')
-             WHERE stripe_subscription_id = ?`,
-          ).bind(userId, entitlement.stripe_subscription_id),
-        ]);
-      }
+      await reconcileEntitlement(env, email, entitlement);
     } catch {
       // Account creation remains successful. The verified subscription can be
       // reconciled again by a later webhook or administrative repair pass.
