@@ -1,7 +1,7 @@
 {
   "compatibility_date": "2025-10-08",
   "main": "src/publicSite.ts",
-  "name": "darcloud-public",
+  "name": "openapi-template",
   "upload_source_maps": true,
   "observability": {
     "enabled": true
