@@ -35,18 +35,21 @@ jobs:
       - name: TypeScript check
         run: npx tsc --noEmit
 
-      - name: Run complete test suite
+      - name: Run complete internal Worker test suite
         run: npx vitest run --config tests/vitest.config.mts
 
-      - name: Compile Cloudflare Worker without deploying
-        run: npx wrangler deploy --dry-run --outdir artifacts/wrangler-dry-run
+      - name: Run isolated public Worker security and page tests
+        run: npx vitest run --config tests/vitest.public.config.mts
 
-      - name: Publish dry-run bundle metadata
+      - name: Compile isolated public Cloudflare Worker without deploying
+        run: npx wrangler deploy --config wrangler.public.jsonc --dry-run --outdir artifacts/wrangler-public-dry-run
+
+      - name: Publish public Worker dry-run metadata
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: darcloud-worker-dry-run
-          path: artifacts/wrangler-dry-run/
+          name: darcloud-public-worker-dry-run
+          path: artifacts/wrangler-public-dry-run/
           if-no-files-found: warn
           retention-days: 14
 
