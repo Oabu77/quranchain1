@@ -1,22 +1,42 @@
-name: QuranChain™ Deploy
+name: DarCloud verified deploy
 
 on:
   push:
     branches: [main]
   workflow_dispatch:
 
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    name: Deploy to Cloudflare Workers
-    steps:
-      - uses: actions/checkout@v4
+permissions:
+  contents: read
 
-      - name: Setup Node.js
+concurrency:
+  group: darcloud-production
+  cancel-in-progress: false
+
+jobs:
+  validate-and-deploy:
+    name: Validate, deploy, and verify DarCloud
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
-          cache: 'npm'
+          node-version: "22"
+          cache: npm
+
+      - name: Verify deployment credentials are configured
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo "CLOUDFLARE_API_TOKEN is not configured"; exit 1; }
+          test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo "CLOUDFLARE_ACCOUNT_ID is not configured"; exit 1; }
 
       - name: Install dependencies
         run: npm ci
@@ -24,26 +44,23 @@ jobs:
       - name: TypeScript check
         run: npx tsc --noEmit
 
-      - name: Run tests
-        run: npx vitest run --config tests/vitest.config.mts 2>/dev/null || echo "Tests skipped (no test DB in CI)"
+      - name: Run complete test suite
+        run: npx vitest run --config tests/vitest.config.mts
 
-      - name: Apply D1 Migrations
-        run: echo "y" | npx wrangler d1 migrations apply DB --remote
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - name: Compile Cloudflare Worker without deploying
+        run: npx wrangler deploy --dry-run --outdir artifacts/wrangler-dry-run
 
       - name: Deploy Worker
         run: npx wrangler deploy
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
-      - name: Verify deployment
-        run: |
-          sleep 5
-          WORKER_URL="https://quranchain1.$(echo ${{ secrets.CLOUDFLARE_ACCOUNT_ID }} | head -c 8).workers.dev"
-          echo "Deployed to Cloudflare Workers"
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - name: Verify every DarCloud production page
+        run: node scripts/darcloud-post-deploy-check.mjs
+
+      - name: Publish dry-run bundle metadata
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: darcloud-production-dry-run
+          path: artifacts/wrangler-dry-run/
+          if-no-files-found: warn
+          retention-days: 14
