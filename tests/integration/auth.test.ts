@@ -46,7 +46,7 @@ describe("Auth API Integration Tests", () => {
 
 	// ── Signup ──
 	describe("POST /api/auth/signup", () => {
-		it("should create a new user and return JWT token", async () => {
+		it("should create a new starter user and return JWT token", async () => {
 			const email = `signup_${Date.now()}@darcloud.host`;
 			const res = await signup({ email });
 			const body = await res.json<{
@@ -62,6 +62,16 @@ describe("Auth API Integration Tests", () => {
 			expect(body.user.plan).toBe("starter");
 			expect(body.token).toBeTruthy();
 			expect(body.token.split(".")).toHaveLength(3);
+		});
+
+		it("should reject client-selected paid plans", async () => {
+			const res = await signup({
+				email: `paid_${Date.now()}@darcloud.host`,
+				plan: "enterprise",
+			});
+			expect(res.status).toBe(403);
+			const body = await res.json<{ error: string }>();
+			expect(body.error).toContain("Paid plans");
 		});
 
 		it("should reject signup with missing fields", async () => {
@@ -175,33 +185,44 @@ describe("Auth API Integration Tests", () => {
 
 	// ── Admin Stats ──
 	describe("GET /api/admin/stats", () => {
-		it("should return stats with valid token", async () => {
-			const email = `admin_${Date.now()}@darcloud.host`;
+		it("should reject an ordinary authenticated user", async () => {
+			const email = `user_${Date.now()}@darcloud.host`;
 			const signupRes = await signup({ email });
 			const { token } = await signupRes.json<{ token: string }>();
 
 			const res = await SELF.fetch("http://local.test/api/admin/stats", {
 				headers: { Authorization: `Bearer ${token}` },
 			});
-			const body = await res.json<{
-				success: boolean;
-				stats: {
-					users: number;
-					contact_submissions: number;
-					hwc_applications: number;
-				};
-			}>();
-
-			expect(res.status).toBe(200);
-			expect(body.success).toBe(true);
-			expect(body.stats.users).toBeGreaterThanOrEqual(1);
-			expect(typeof body.stats.contact_submissions).toBe("number");
-			expect(typeof body.stats.hwc_applications).toBe("number");
+			expect(res.status).toBe(403);
 		});
 
 		it("should reject admin stats without auth", async () => {
 			const res = await SELF.fetch("http://local.test/api/admin/stats");
-			expect(res.status).toBe(401);
+			expect(res.status).toBe(403);
+		});
+	});
+
+	// ── Billing containment ──
+	describe("Billing security boundary", () => {
+		it("should fail closed on checkout until entitlement hardening is complete", async () => {
+			const res = await SELF.fetch("http://local.test/api/checkout/session", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					email: "synthetic@example.invalid",
+					plan: "pro",
+				}),
+			});
+			expect(res.status).toBe(503);
+		});
+
+		it("should fail closed on arbitrary Stripe customer portal creation", async () => {
+			const res = await SELF.fetch("http://local.test/api/stripe/portal", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ customer_id: "cus_synthetic_never_send" }),
+			});
+			expect(res.status).toBe(503);
 		});
 	});
 
