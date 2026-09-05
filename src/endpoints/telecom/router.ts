@@ -78,11 +78,11 @@ telecomRouter.get("/dashboard", async (c) => {
     mrr: `$${mrr.toFixed(2)}`,
     arr: `$${(mrr * 12).toFixed(2)}`,
     revenue_split: {
-      founder_30: `$${(mrr * 0.30).toFixed(2)} (30%)`,
-      ai_validators_40: `$${(mrr * 0.40).toFixed(2)} (40%)`,
-      hardware_hosts_10: `$${(mrr * 0.10).toFixed(2)} (10%)`,
-      ecosystem_18: `$${(mrr * 0.18).toFixed(2)} (18%)`,
-      zakat_2: `$${(mrr * 0.02).toFixed(2)} (2%)`,
+      founder_30: `$${(mrr * 0.30).toFixed(2)}`,
+      ai_validators_40: `$${(mrr * 0.40).toFixed(2)}`,
+      hardware_hosts_10: `$${(mrr * 0.10).toFixed(2)}`,
+      ecosystem_18: `$${(mrr * 0.18).toFixed(2)}`,
+      zakat_2: `$${(mrr * 0.02).toFixed(2)}`,
     },
   });
 });
