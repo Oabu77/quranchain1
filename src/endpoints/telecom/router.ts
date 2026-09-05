@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { authorizeTelecomRequest } from "./security";
 
 const telecomRouter = new Hono<{ Bindings: Env }>();
 
@@ -11,9 +12,29 @@ const ISP_PLANS: Record<string, any> = {
   mesh_node: { name: "MeshTalk Node Operator", price: 0, data_gb: -1, speed_mbps: -1, sms: 0, voice_min: 0 },
 };
 
-// GET /telecom/plans
+// GET /telecom/plans — intentionally public product information
 telecomRouter.get("/plans", (c) => {
   return c.json({ success: true, plans: ISP_PLANS });
+});
+
+// All remaining telecom routes are control-plane/data-plane management surfaces.
+// Fail closed before any D1 access when strong server-managed credentials are absent.
+telecomRouter.use("*", async (c, next) => {
+  const env = c.env as Env & {
+    DARCLOUD_TELECOM_READ_TOKEN?: string;
+    DARCLOUD_TELECOM_MUTATION_TOKEN?: string;
+  };
+  const authorization = await authorizeTelecomRequest(
+    c.req.method,
+    c.req.header("Authorization"),
+    env.DARCLOUD_TELECOM_READ_TOKEN,
+    env.DARCLOUD_TELECOM_MUTATION_TOKEN,
+  );
+  if (!authorization.ok) {
+    return c.json({ success: false, error: authorization.error }, authorization.status);
+  }
+  await next();
+  c.res.headers.set("Cache-Control", "no-store");
 });
 
 // GET /telecom/dashboard — ISP overview
@@ -57,11 +78,11 @@ telecomRouter.get("/dashboard", async (c) => {
     mrr: `$${mrr.toFixed(2)}`,
     arr: `$${(mrr * 12).toFixed(2)}`,
     revenue_split: {
-      founder_30: `$${(mrr * 0.30).toFixed(2)}`,
-      ai_validators_40: `$${(mrr * 0.40).toFixed(2)}`,
-      hardware_hosts_10: `$${(mrr * 0.10).toFixed(2)}`,
-      ecosystem_18: `$${(mrr * 0.18).toFixed(2)}`,
-      zakat_2: `$${(mrr * 0.02).toFixed(2)}`,
+      founder_30: `$${(mrr * 0.30).toFixed(2)} (30%)`,
+      ai_validators_40: `$${(mrr * 0.40).toFixed(2)} (40%)`,
+      hardware_hosts_10: `$${(mrr * 0.10).toFixed(2)} (10%)`,
+      ecosystem_18: `$${(mrr * 0.18).toFixed(2)} (18%)`,
+      zakat_2: `$${(mrr * 0.02).toFixed(2)} (2%)`,
     },
   });
 });
