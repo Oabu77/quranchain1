@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { authorizeTelecomRequest } from "./security";
 
 const telecomRouter = new Hono<{ Bindings: Env }>();
 
@@ -11,9 +12,29 @@ const ISP_PLANS: Record<string, any> = {
   mesh_node: { name: "MeshTalk Node Operator", price: 0, data_gb: -1, speed_mbps: -1, sms: 0, voice_min: 0 },
 };
 
-// GET /telecom/plans
+// GET /telecom/plans — intentionally public product information
 telecomRouter.get("/plans", (c) => {
   return c.json({ success: true, plans: ISP_PLANS });
+});
+
+// All remaining telecom routes are control-plane/data-plane management surfaces.
+// Fail closed before any D1 access when strong server-managed credentials are absent.
+telecomRouter.use("*", async (c, next) => {
+  const env = c.env as Env & {
+    DARCLOUD_TELECOM_READ_TOKEN?: string;
+    DARCLOUD_TELECOM_MUTATION_TOKEN?: string;
+  };
+  const authorization = await authorizeTelecomRequest(
+    c.req.method,
+    c.req.header("Authorization"),
+    env.DARCLOUD_TELECOM_READ_TOKEN,
+    env.DARCLOUD_TELECOM_MUTATION_TOKEN,
+  );
+  if (!authorization.ok) {
+    return c.json({ success: false, error: authorization.error }, authorization.status);
+  }
+  await next();
+  c.res.headers.set("Cache-Control", "no-store");
 });
 
 // GET /telecom/dashboard — ISP overview
