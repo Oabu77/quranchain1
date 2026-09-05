@@ -27,6 +27,9 @@ jobs:
       - name: Run tests
         run: npx vitest run --config tests/vitest.config.mts 2>/dev/null || echo "Tests skipped (no test DB in CI)"
 
+      - name: Security gate — contracts control plane authorization
+        run: python3 scripts/check-contracts-control.py
+
       - name: Apply D1 Migrations
         run: echo "y" | npx wrangler d1 migrations apply DB --remote
         env:
