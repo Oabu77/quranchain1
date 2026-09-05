@@ -1,0 +1,21 @@
+name: Telecom Control Plane Security
+
+on:
+  pull_request:
+    paths:
+      - 'src/endpoints/telecom/**'
+      - 'tests/telecom-control-policy.test.js'
+      - '.github/workflows/telecom-control-plane-security.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  telecom-control-plane-security:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Static authorization regression
+        run: node tests/telecom-control-policy.test.js
