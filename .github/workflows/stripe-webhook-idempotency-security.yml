@@ -1,0 +1,37 @@
+name: Stripe Webhook Idempotency Security
+
+on:
+  pull_request:
+    paths:
+      - "src/index.ts"
+      - "migrations/0010_add_revenue_tables.sql"
+      - "migrations/0013_stripe_webhook_idempotency.sql"
+      - "scripts/test_stripe_webhook_idempotency.py"
+      - ".github/workflows/stripe-webhook-idempotency-security.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  stripe-webhook-idempotency:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify provider-free duplicate accounting containment
+        run: python3 scripts/test_stripe_webhook_idempotency.py
+      - name: Verify webhook accounting batch still inserts ledger before treasury updates
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          source = Path('src/index.ts').read_text(encoding='utf-8')
+          start = source.index('if (event.type === "checkout.session.completed")')
+          end = source.index('// Handle subscription lifecycle', start)
+          block = source[start:end]
+          insert_at = block.index('INSERT INTO revenue_ledger')
+          update_at = block.index('UPDATE treasury_accounts')
+          batch_at = block.index('await db.batch(statements)')
+          assert insert_at < update_at < batch_at, 'accounting order changed; re-review idempotency containment'
+          print('PASS: ledger uniqueness failure occurs before treasury updates inside D1 batch')
+          PY
