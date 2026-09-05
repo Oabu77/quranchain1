@@ -1,0 +1,36 @@
+name: Discord Runtime Authorization Security
+
+on:
+  pull_request:
+    paths:
+      - "discord-bot/bot.js"
+      - "discord-bot/bot-legacy.js"
+      - "discord-bot/discord-runtime-guard.js"
+      - "discord-bot/admin-command-policy.js"
+      - "tests/discord-runtime-authorization.test.js"
+      - ".github/workflows/discord-runtime-authorization-security.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  runtime-authorization:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Syntax check
+        run: |
+          node --check discord-bot/bot.js
+          node --check discord-bot/bot-legacy.js
+          node --check discord-bot/discord-runtime-guard.js
+          node --check discord-bot/admin-command-policy.js
+          node --check tests/discord-runtime-authorization.test.js
+      - name: Synthetic runtime authorization policy
+        run: node tests/discord-runtime-authorization.test.js
+      - name: Verify security wrapper is canonical
+        run: |
+          grep -q 'installDiscordRuntimeGuard' discord-bot/bot.js
+          grep -q 'bot-legacy' discord-bot/bot.js
+          test -f discord-bot/bot-legacy.js
+          grep -q 'interactionCreate' discord-bot/bot-legacy.js
