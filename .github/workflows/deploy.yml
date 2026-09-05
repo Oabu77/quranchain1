@@ -27,6 +27,46 @@ jobs:
       - name: Run tests
         run: npx vitest run --config tests/vitest.config.mts 2>/dev/null || echo "Tests skipped (no test DB in CI)"
 
+      - name: Security gate — contracts control plane authorization
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import sys
+
+          index = Path("src/index.ts").read_text(encoding="utf-8")
+          contracts = Path("src/endpoints/contracts.ts").read_text(encoding="utf-8")
+
+          mount = 'app.route("/api/contracts", contracts);'
+          if mount not in index:
+              print("::error::Expected /api/contracts mount was not found; review routing before deployment.")
+              sys.exit(1)
+
+          before_mount = index.split(mount, 1)[0]
+          has_route_gate = (
+              'app.use("/api/contracts/*"' in before_mount
+              and "DARCLOUD_CONTRACTS_READ_TOKEN" in before_mount
+              and "DARCLOUD_CONTRACTS_MUTATION_TOKEN" in before_mount
+          )
+
+          mutation_markers = [
+              'contracts.post("/companies/seed"',
+              'contracts.post("/sign"',
+              'contracts.post("/seed-all"',
+              'contracts.post("/legal/file-all"',
+              'contracts.post("/legal/protect-ip"',
+              'contracts.post("/bootstrap"',
+          ]
+          has_mutations = any(marker in contracts for marker in mutation_markers)
+
+          if has_mutations and not has_route_gate:
+              print("::error::Deployment blocked: /api/contracts contains D1-mutating contract/legal/IP handlers without the required fail-closed read/mutation authorization boundary.")
+              print("Remediate issue #38 before deploying this Worker.")
+              sys.exit(1)
+
+          print("Contracts control-plane deployment gate passed.")
+          PY
+
       - name: Apply D1 Migrations
         run: echo "y" | npx wrangler d1 migrations apply DB --remote
         env:
