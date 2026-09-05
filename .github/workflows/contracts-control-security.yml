@@ -1,0 +1,21 @@
+name: Contracts Control Plane Security
+
+on:
+  pull_request:
+    paths:
+      - 'src/index.ts'
+      - 'src/endpoints/contracts.ts'
+      - 'scripts/check-contracts-control.py'
+      - '.github/workflows/deploy.yml'
+      - '.github/workflows/contracts-control-security.yml'
+  workflow_dispatch:
+
+jobs:
+  checker-self-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Contracts authorization checker self-test
+        run: python3 scripts/check-contracts-control.py --self-test
+      - name: Python syntax check
+        run: python3 -m py_compile scripts/check-contracts-control.py
