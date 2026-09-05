@@ -1,6 +1,7 @@
 import { contentJson, OpenAPIRoute } from "chanfana";
 import { AppContext } from "../../types";
 import { z } from "zod";
+import { VM_NAME_PATTERN } from "./security";
 
 export class MultipassVmDelete extends OpenAPIRoute {
 public schema = {
@@ -14,7 +15,7 @@ description:
 operationId: "multipass-vm-delete",
 request: {
 params: z.object({
-id: z.string().describe("VM identifier to permanently remove"),
+id: z.string().min(3).max(64).regex(VM_NAME_PATTERN, "VM identifier must contain only lowercase letters, digits, and internal hyphens").describe("VM identifier to permanently remove"),
 }),
 },
 responses: {
@@ -65,13 +66,25 @@ hint: "Use GET /multipass/vms to list active VMs",
 );
 }
 
+const vmName = String(vm.name);
+if (!VM_NAME_PATTERN.test(vmName) || vmName.length < 3 || vmName.length > 64) {
+return c.json(
+{
+success: false as const,
+error: "Stored VM name is unsafe for host-command generation; manual operator cleanup is required",
+hint: "Do not execute a teardown command derived from this record",
+},
+409,
+);
+}
+
 await db.prepare("DELETE FROM multipass_vms WHERE id = ?").bind(id).run();
 
 return {
 success: true as const,
 deleted: id,
 deleted_at: new Date().toISOString(),
-teardown_command: `multipass delete ${vm.name} --purge`,
+teardown_command: `multipass delete ${vmName} --purge`,
 execution_ms: Date.now() - started,
 };
 }
