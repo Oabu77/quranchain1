@@ -1,0 +1,32 @@
+name: Discord Admin Command Security
+
+on:
+  pull_request:
+    paths:
+      - "discord-bot/register-commands.js"
+      - "discord-bot/register-commands-legacy.js"
+      - "discord-bot/admin-command-policy.js"
+      - "tests/discord-admin-command-policy.test.js"
+      - ".github/workflows/discord-admin-command-security.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  policy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Syntax check
+        run: |
+          node --check discord-bot/register-commands.js
+          node --check discord-bot/register-commands-legacy.js
+          node --check discord-bot/admin-command-policy.js
+          node --check tests/discord-admin-command-policy.test.js
+      - name: Synthetic authorization metadata regression
+        run: node tests/discord-admin-command-policy.test.js
+      - name: Verify registration wrapper is canonical
+        run: |
+          grep -q 'register-commands-legacy' discord-bot/register-commands.js
+          test -f discord-bot/register-commands-legacy.js
