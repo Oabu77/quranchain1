@@ -36,9 +36,9 @@ echo "  Compose: $(docker compose version 2>/dev/null || echo 'v2')"
 # entries such as "3000:3000" bind to 0.0.0.0 by default.
 if [ "${DARTELECOM_ALLOW_UNSAFE_PORT_PUBLISHING:-0}" != "1" ]; then
   unsafe_ports=()
-  grep -Eq '^[[:space:]]*-[[:space:]]*["'"']?27017:27017["'"']?[[:space:]]*$' docker-compose.yml && unsafe_ports+=("MongoDB 27017")
-  grep -Eq '^[[:space:]]*-[[:space:]]*["'"']?9999:9999["'"']?[[:space:]]*$' docker-compose.yml && unsafe_ports+=("Open5GS WebUI 9999")
-  grep -Eq '^[[:space:]]*-[[:space:]]*["'"']?3000:3000["'"']?[[:space:]]*$' docker-compose.yml && unsafe_ports+=("ISP controller 3000")
+  grep -Eq "^[[:space:]]*-[[:space:]]*[\"']?27017:27017[\"']?[[:space:]]*$" docker-compose.yml && unsafe_ports+=("MongoDB 27017")
+  grep -Eq "^[[:space:]]*-[[:space:]]*[\"']?9999:9999[\"']?[[:space:]]*$" docker-compose.yml && unsafe_ports+=("Open5GS WebUI 9999")
+  grep -Eq "^[[:space:]]*-[[:space:]]*[\"']?3000:3000[\"']?[[:space:]]*$" docker-compose.yml && unsafe_ports+=("ISP controller 3000")
 
   if [ "${#unsafe_ports[@]}" -gt 0 ]; then
     echo "ERROR: refusing to deploy management/database services with wide host bindings."
