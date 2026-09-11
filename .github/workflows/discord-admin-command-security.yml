@@ -6,7 +6,7 @@ on:
       - "discord-bot/register-commands.js"
       - "discord-bot/register-commands-legacy.js"
       - "discord-bot/admin-command-policy.js"
-      - "tests/discord-admin-command-policy.test.js"
+      - "tests/discord-admin-command-policy.test.mjs"
       - ".github/workflows/discord-admin-command-security.yml"
   workflow_dispatch:
 
@@ -16,16 +16,29 @@ permissions:
 jobs:
   policy:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
       - name: Syntax check
         run: |
           node --check discord-bot/register-commands.js
           node --check discord-bot/register-commands-legacy.js
           node --check discord-bot/admin-command-policy.js
-          node --check tests/discord-admin-command-policy.test.js
+          node --check tests/discord-admin-command-policy.test.mjs
+
       - name: Synthetic authorization metadata regression
-        run: node tests/discord-admin-command-policy.test.js
+        run: npx vitest run --config tests/vitest.config.mts tests/discord-admin-command-policy.test.mjs
+
       - name: Verify registration wrapper is canonical
         run: |
           grep -q 'register-commands-legacy' discord-bot/register-commands.js
