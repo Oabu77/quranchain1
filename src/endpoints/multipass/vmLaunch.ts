@@ -1,6 +1,7 @@
 import { contentJson, OpenAPIRoute } from "chanfana";
 import { AppContext } from "../../types";
 import { z } from "zod";
+import { VM_NAME_PATTERN } from "./security";
 
 export class MultipassVmLaunch extends OpenAPIRoute {
 public schema = {
@@ -15,7 +16,7 @@ operationId: "multipass-vm-launch",
 request: {
 body: contentJson(
 z.object({
-name: z.string().min(3).max(64).describe("VM name (e.g. fungimesh-relay1). Must be unique."),
+name: z.string().min(3).max(64).regex(VM_NAME_PATTERN, "VM name must contain only lowercase letters, digits, and internal hyphens").describe("VM name (e.g. fungimesh-relay1). Must be unique."),
 cpus: z.number().int().min(1).max(16).default(2).describe("vCPUs to allocate (1-16)"),
 memory_mb: z.number().int().min(512).max(32768).default(2048).describe("RAM in MB (512-32768)"),
 disk_gb: z.number().int().min(5).max(500).default(10).describe("Disk in GB (5-500)"),

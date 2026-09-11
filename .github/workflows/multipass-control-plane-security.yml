@@ -1,0 +1,32 @@
+name: Multipass Control Plane Security
+
+on:
+  pull_request:
+    paths:
+      - 'src/endpoints/multipass/**'
+      - 'tests/multipass-control-policy.test.js'
+      - 'tests/multipass-control-authz.behavior.mjs'
+      - '.github/workflows/multipass-control-plane-security.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  multipass-control-plane-security:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Static authorization regression
+        run: node tests/multipass-control-policy.test.js
+      - name: Synthetic authorization and command-boundary behavior
+        run: node --experimental-strip-types tests/multipass-control-authz.behavior.mjs
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+      - name: TypeScript check
+        run: npx tsc --noEmit
