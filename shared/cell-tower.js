@@ -12,6 +12,8 @@ const { execSync, exec } = require("child_process");
 const crypto = require("crypto");
 const dns = require("dns");
 
+const MAX_TOWER_HEADER_BYTES = 1024;
+
 // ── Hardware Discovery ─────────────────────────────────────
 function getHardwareProfile() {
   const ifaces = os.networkInterfaces();
@@ -273,6 +275,14 @@ class CellTower {
           if (client) { client.bytes += data.length; client.packets++; }
 
           if (!headerParsed) {
+            const newlineInChunk = data.indexOf(0x0A);
+            const incomingHeaderBytes = newlineInChunk >= 0 ? newlineInChunk : data.length;
+            if (headerBuf.length + incomingHeaderBytes > MAX_TOWER_HEADER_BYTES) {
+              socket.write("ERR: Header too large\n");
+              socket.destroy();
+              return;
+            }
+
             headerBuf = Buffer.concat([headerBuf, data]);
             const nlIdx = headerBuf.indexOf(0x0A); // newline
             if (nlIdx >= 0) {
