@@ -1,16 +1,32 @@
 name: QuranChain™ Deploy
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
+    inputs:
+      confirm_production:
+        description: 'Type/select DEPLOY to run the production release'
+        required: true
+        type: choice
+        options:
+          - 'NO'
+          - 'DEPLOY'
+        default: 'NO'
 
 permissions:
   contents: read
 
+concurrency:
+  group: quranchain-production
+  cancel-in-progress: false
+
 jobs:
   deploy:
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      github.actor == github.repository_owner &&
+      github.event.inputs.confirm_production == 'DEPLOY'
     runs-on: ubuntu-latest
+    environment: production
     name: Deploy to Cloudflare Workers
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
