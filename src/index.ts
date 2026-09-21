@@ -40,7 +40,8 @@ app.use("*", async (c, next) => {
   }
   // Authoritative APIs must reach Hono authentication instead of landing-page
   // catch-all handlers or recursive subdomain proxies.
-  if (url.pathname === "/api/chain/status" || /^\/api\/(auth|admin|revenue|contracts)(\/|$)/.test(url.pathname)) {
+  const apexHealth = /^darcloud\.(host|net)$/.test(url.hostname) && url.pathname === "/health";
+  if (apexHealth || url.pathname === "/api/chain/status" || /^\/api\/(auth|admin|revenue|contracts|checkout|stripe)(\/|$)/.test(url.pathname)) {
     await next();
     return;
   }
@@ -270,65 +271,7 @@ app.post("/api/stripe/webhook", async (c) => {
   }
 });
 
-// ── Payment Checkout Session API (real Stripe) ──
-app.post("/api/checkout/session", async (c) => {
-  try {
-    const { plan, discord_id, email } = await c.req.json();
-    const plans: Record<string, { name: string; price: number; price_id: string; mode: string }> = {
-      pro: { name: "DarCloud Professional", price: 4900, price_id: "price_1TAR0SAqs2ifkfkqOKa2Rzq3", mode: "subscription" },
-      enterprise: { name: "DarCloud Enterprise", price: 49900, price_id: "price_1TAR0TAqs2ifkfkqdtr8kWEf", mode: "subscription" },
-      fungimesh: { name: "FungiMesh Node", price: 1999, price_id: "price_1TAR0TAqs2ifkfkqqrjzoLdm", mode: "subscription" },
-      hwc: { name: "HWC Premium", price: 9900, price_id: "price_1TAR0TAqs2ifkfkqKFPTW7hM", mode: "subscription" },
-    };
-
-    const selectedPlan = plans[plan];
-    if (!selectedPlan) {
-      return c.json({ error: "Invalid plan" }, 400);
-    }
-
-    const stripeKey = c.env.STRIPE_SECRET_KEY;
-    if (!stripeKey) {
-      return c.json({ error: "Payment system not configured" }, 500);
-    }
-
-    // Create real Stripe Checkout Session via API
-    const params = new URLSearchParams();
-    params.append("mode", selectedPlan.mode);
-    params.append("line_items[0][price]", selectedPlan.price_id);
-    params.append("line_items[0][quantity]", "1");
-    params.append("success_url", "https://darcloud.host/checkout/success?session_id={CHECKOUT_SESSION_ID}");
-    params.append("cancel_url", "https://darcloud.host/checkout/cancel");
-    if (email) params.append("customer_email", email);
-    if (discord_id) params.append("metadata[discord_id]", discord_id);
-    params.append("metadata[product]", plan);
-
-    const stripeRes = await fetch("https://api.stripe.com/v1/checkout/sessions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${stripeKey}`,
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: params.toString(),
-    });
-
-    const session = await stripeRes.json() as any;
-    if (session.error) {
-      console.error("[Checkout] Stripe error:", session.error.message);
-      return c.json({ error: session.error.message }, 400);
-    }
-
-    return c.json({
-      success: true,
-      session_id: session.id,
-      checkout_url: session.url,
-      plan: selectedPlan.name,
-      amount: selectedPlan.price,
-      currency: "usd",
-    });
-  } catch (err) {
-    return c.json({ error: "Failed to create checkout session" }, 500);
-  }
-});
+// Checkout is registered once in the authenticated /api router above.
 
 // ── Customer Portal (manage subscriptions) ──
 app.post("/api/stripe/portal", async (c) => {

@@ -36,7 +36,9 @@ does not repair or certify the underlying mining/consensus design.
 | Undefined blockchain `/api/*` | 404; no arbitrary proxy |
 | Apex `GET /health` | D1 observation and explicitly unknown unmeasured fleet services |
 | `/api/admin/stats`, `/api/revenue/*`, `/api/contracts/*` | Existing authenticated user in the operator's `ADMIN_USER_IDS` allowlist |
+| `POST /api/checkout/session` | Signed-in D1 user, server-owned Stripe customer mapping, real Stripe Checkout session; no paid-plan activation from an intent |
 | `POST /api/stripe/portal` | Authenticated owner of the stored Stripe customer ID |
+| Checkout subdomains | GET redirects to the existing canonical checkout pages; no generated session IDs or payment-success response |
 | Revenue landing `/` | Informational JSON metadata; no fabricated metrics or financial proxy |
 
 Fresh observations return HTTP 200 with source, `observed_at`, `fetched_at`,
@@ -68,24 +70,36 @@ establish which account is currently active.
 
 Directly changed production surfaces include blockchain and revenue hostnames
 under both domains; administrative, contract and revenue APIs; the billing
-portal authorization check; apex health/OpenAPI responses; and related revenue
-claims in the `www` and `pay` landing pages. Authoritative auth/admin/revenue/
-contracts API paths now reach Hono on all configured subdomains instead of
-landing-page catch-all handlers.
+portal authorization check; checkout creation, signup's initial plan and checkout
+result pages; health responses on both apex domains and the main OpenAPI
+description; and related revenue claims
+in the `www` and `pay` landing pages. Authoritative auth/admin/revenue/contracts/
+checkout/stripe API paths now reach Hono on all configured subdomains instead
+of landing-page catch-all handlers. The separate checkout landing module now
+redirects to the canonical authenticated flow.
 
 The GitHub deployment workflow runs on pushes to `main` or manual dispatch.
 A review branch does not trigger this workflow. Merging into `main` does.
 The existing workflow also applies remote D1 migrations before deployment;
 inspect any pending migrations and retain backups before using that workflow.
+The new `Verify pull request` workflow runs type checking and the same build/test
+command on Node 22 with read-only repository permissions. It has no deployment,
+remote database migration, or provider secret access.
 
 ## Required connections and configuration
 
 1. An authenticated Cloudflare account with permission to deploy the existing
    Worker. Local `wrangler whoami` reported unauthenticated during preparation.
    The presence or correctness of GitHub repository secrets was not verified.
+   On 2026-09-21 the browser dashboard remained on its security verification
+   screen after one reload; no account authentication was completed.
 2. Authorized access to the existing bot host to install this patch and restart
    the bot. The working host and its current database have not been connected
    or inspected in this task.
+   The repository's PM2 configuration names `quranchain-bot` and a
+   `/workspaces/quranchain1/quranchain-bot` working directory, but gives no
+   reachable host address. Its existing tunnel configuration points to port
+   8787, not the ledger IPC listener on 9002, and is not a usable status origin.
 3. A verified HTTPS origin that exposes only GET `/chain-status` to the Worker,
    preserving the IPC listener's loopback binding. It must not resolve back to
    this Worker's wildcard route. Do not expose the entire IPC server or revenue
@@ -97,6 +111,11 @@ inspect any pending migrations and retain backups before using that workflow.
    IDs, verified from authenticated account records. An absent allowlist
    intentionally denies administrative and aggregate financial access. Do not
    assume an account ID or infer privilege from an email address.
+6. For checkout, the existing `STRIPE_SECRET_KEY` must have the necessary
+   Customer read/create and Checkout Session permissions in the intended
+   Stripe account. This patch retains the repository's existing Price IDs;
+   their availability and account ownership have not been verified live.
+   No live customer, Checkout Session, subscription, or charge was created.
 
 Until these are configured, unavailable public ledger data and denied admin
 access are expected. Do not describe this state as a live chain deployment.
@@ -118,7 +137,7 @@ Observed local validation on 2026-09-21 (Node v24.19.0):
 | Command/check | Result |
 | --- | --- |
 | Baseline `npm test` before edits | Build passed; 46 Workers tests passed |
-| Updated `npm test` | Build passed; 110 Workers tests and 10 Node tests passed |
+| Updated `npm test`, including checkout follow-up | Build passed; 154 Workers tests and 10 Node tests passed |
 | `npx tsc --noEmit` | Passed, exit 0 |
 | `git diff --check` | Passed |
 | `wrangler whoami` | Unauthenticated; no provider deployment performed |
@@ -126,6 +145,10 @@ Observed local validation on 2026-09-21 (Node v24.19.0):
 Regression tests were first observed failing for fabricated/absent public
 status behavior, unverified fleet health, financial access, and browser expiry,
 then passed after implementation. The full updated test command exited 0.
+Checkout ownership and alias regressions were also observed failing before
+their fixes. These tests cover signed identity, customer mapping conflicts,
+missing configuration, upstream errors, unchanged paid entitlements, honest
+checkout result pages, and authenticated routing on both checkout aliases.
 
 After review and configuration, first verify the authenticated origin's exact
 projection on the bot host. Then deploy the same tested Worker revision through
@@ -145,13 +168,20 @@ release can be reported until these checks actually run.
   reconciled processor collections or bank balances.
 - Unconfigured administrator IDs intentionally close previously overbroad
   access. Configure the correct existing operator account before rollout.
-- Billing portal access requires a verified `users.darpay_customer_id` mapping.
-  No existing code was found to populate that column automatically. Real
-  customers without an established mapping are denied, even if signed in.
-  Verify ownership from authenticated processor/account records before
-  configuring mappings; an unverified submitted email is not sufficient.
-  The portal tests explicitly seed ownership and do not prove production
-  customer mapping readiness.
+- Checkout now creates a Stripe customer for the authenticated D1 user with
+  server-controlled application/user metadata, a stable idempotency key, and
+  a conditional write to `users.darpay_customer_id`. Existing mappings are
+  reused only after processor metadata confirms ownership; unknown legacy
+  mappings fail closed and need authoritative reconciliation. Submitted email,
+  Discord ID, user ID, and customer ID cannot establish checkout ownership.
+  The portal still requires the authenticated user's stored mapping. Controlled
+  test responses do not establish production customer mapping readiness.
+- Signup always starts with the `starter` plan. Checkout creation does not
+  activate a paid plan, and a browser success redirect is labeled unverified.
+  The existing webhook's entitlement fulfillment still relies on legacy
+  Discord metadata; it has not been migrated to the new server-owned user
+  reference. Verified paid-plan fulfillment remains a separate release blocker
+  before offering this flow as an operational paid subscription product.
 - Generic system health is degraded when the fleet is unmeasured; monitoring
   must not interpret it as a verified fleet outage or healthy fleet.
 - Other mesh/network marketing and service-status implementations were not

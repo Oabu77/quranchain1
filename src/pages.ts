@@ -138,7 +138,7 @@ async function handleSignup(e) {
     if (plan === 'pro') {
       setTimeout(() => window.location.href = '/checkout/pro', 1500);
     } else if (plan === 'enterprise') {
-      setTimeout(() => window.location.href = 'https://enterprise.darcloud.host', 1500);
+      setTimeout(() => window.location.href = '/checkout/enterprise', 1500);
     } else {
       setTimeout(() => window.location.href = '/onboarding', 1500);
     }
@@ -199,9 +199,11 @@ async function handleLogin(e) {
     success.style.display = 'block';
     localStorage.setItem('darcloud_token', data.token);
     const requested = new URLSearchParams(window.location.search).get('redirect');
-    const destination = requested && requested.startsWith('/') && !requested.startsWith('//')
-      ? requested
-      : '/dashboard';
+    let destination = '/dashboard';
+    if (requested && requested.startsWith('/')) {
+      const target = new URL(requested, window.location.origin);
+      if (target.origin === window.location.origin) destination = target.pathname + target.search;
+    }
     setTimeout(() => window.location.href = destination, 1500);
   } catch(err) {
     error.textContent = err.message;
@@ -245,11 +247,6 @@ export const ONBOARDING_PAGE = pageShell("Welcome to DarCloud", `
 
 export function checkoutPage(plan: string): string {
   const plans: Record<string, { name: string; price: string; features: string[] }> = {
-    starter: {
-      name: "Starter",
-      price: "Free",
-      features: ["API Access (1K req/day)", "1 AI Agent", "Basic Mesh Access", "Community Support"]
-    },
     pro: {
       name: "Professional",
       price: "$49/mo",
@@ -260,14 +257,18 @@ export function checkoutPage(plan: string): string {
       price: "$499/mo",
       features: ["5 Dedicated VMs", "10 AI Agents", "Basic Compliance Engine", "Email Support", "99.9% SLA"]
     },
-    business: {
-      name: "Enterprise Business",
-      price: "$1,999/mo",
-      features: ["20 Dedicated VMs", "30 AI Agents", "Full Compliance Engine", "Priority Support", "99.95% SLA", "Custom Billing"]
-    }
+    hwc: { name: "HWC Premium", price: "$99", features: [] },
+    fungimesh: { name: "FungiMesh Node", price: "$19.99", features: [] },
   };
 
-  const p = plans[plan] || plans.pro;
+  plans.enterprise = { ...plans.startup, name: "Enterprise" };
+  if (!Object.hasOwn(plans, plan)) {
+    return pageShell("Plan unavailable", `<div class="card"><h1>Plan unavailable</h1>
+      <p class="sub">This plan is not available through online checkout. Sign in to view your account or contact support for help.</p>
+      <a href="/login" class="btn btn-primary">Sign In</a><a href="/signup" class="btn btn-outline">Create a Free Account</a></div>`);
+  }
+  const p = plans[plan];
+  const serializedPlan = JSON.stringify(plan).replace(/</g, "\\u003c");
   const featureHtml = p.features.map(f => `<li style="padding:.4rem 0;font-size:.9rem;color:var(--muted)">✓ ${f}</li>`).join("");
 
   return pageShell(`Checkout — ${p.name}`, `
@@ -279,25 +280,18 @@ export function checkoutPage(plan: string): string {
 
   <div style="text-align:center;padding:1.5rem;background:var(--s2);border:1px solid var(--bdr);border-radius:12px;margin-bottom:1.5rem">
     <div style="font-size:2.5rem;font-weight:800;background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent">${p.price}</div>
-    <div style="color:var(--muted);font-size:.9rem;margin-top:.25rem">Billed monthly • Cancel anytime</div>
+    <div style="color:var(--muted);font-size:.9rem;margin-top:.25rem">Review final billing details on secure checkout before paying.</div>
   </div>
 
   <ul style="list-style:none;margin-bottom:1.5rem;padding:0">${featureHtml}</ul>
 
   <form id="checkoutForm" onsubmit="return handleCheckout(event)">
-    <div class="form-group">
-      <label for="email">Email Address</label>
-      <input type="email" id="email" name="email" required placeholder="you@example.com">
-    </div>
-    <div class="form-group">
-      <label for="name">Full Name</label>
-      <input type="text" id="name" name="name" required placeholder="Your name">
-    </div>
+    <p class="sub">Sign in to continue with the billing account linked to your DarCloud account.</p>
     <button type="submit" class="btn btn-primary" id="submitBtn">Subscribe — ${p.price}</button>
   </form>
 
   <p style="text-align:center;margin-top:1rem;font-size:.8rem;color:var(--muted)">
-    🔒 Powered by DarPay™ • Zero riba • 2% Zakat auto-calculated
+    🔒 Payment details are entered on Stripe’s secure checkout page.
   </p>
   <a href="/signup" class="btn btn-outline" style="text-decoration:none;margin-top:.5rem">← Back to signup</a>
 </div>
@@ -312,26 +306,28 @@ async function handleCheckout(e) {
   btn.textContent = 'Processing...';
   btn.disabled = true;
   try {
+    const token = localStorage.getItem('darcloud_token');
     const res = await fetch('/api/checkout/session', {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({
-        email: document.getElementById('email').value,
-        name: document.getElementById('name').value,
-        plan: '${plan}'
-      })
+      headers: {'Content-Type': 'application/json', ...(token ? {'Authorization': 'Bearer ' + token} : {})},
+      credentials: 'include',
+      body: JSON.stringify({plan: ${serializedPlan}})
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Checkout failed');
-    if (data.checkout_url) {
-      success.textContent = 'Redirecting to secure checkout...';
-      success.style.display = 'block';
-      setTimeout(() => window.location.href = data.checkout_url, 1000);
-    } else {
-      success.textContent = data.message || 'Subscription recorded! Redirecting to onboarding...';
-      success.style.display = 'block';
-      setTimeout(() => window.location.href = '/onboarding', 2000);
+    if (res.status === 401) {
+      localStorage.removeItem('darcloud_token');
+      window.location.href = '/login?redirect=' + encodeURIComponent(window.location.pathname);
+      return;
     }
+    if (!res.ok) throw new Error(data.error || 'Checkout unavailable. Please try again later.');
+    if (!data.checkout_url) throw new Error('Secure checkout is unavailable. Please try again later.');
+    const destination = new URL(data.checkout_url);
+    if (destination.protocol !== 'https:' || destination.hostname !== 'checkout.stripe.com' || destination.username || destination.password || destination.port) {
+      throw new Error('Secure checkout is unavailable. Please try again later.');
+    }
+    success.textContent = 'Redirecting to secure checkout...';
+    success.style.display = 'block';
+    window.location.href = destination.href;
   } catch(err) {
     error.textContent = err.message;
     error.style.display = 'block';
@@ -345,34 +341,28 @@ async function handleCheckout(e) {
 
 // ── Checkout Success/Cancel Pages ──
 export function checkoutResultPage(status: string, sessionId?: string): string {
+  const reference = sessionId && /^cs_(test|live)_[A-Za-z0-9]+$/.test(sessionId) ? sessionId : "Not available";
   if (status === "success") {
-    return pageShell("Payment Success", `
+    return pageShell("Checkout Returned", `
 <div class="card" style="max-width:500px;text-align:center">
-  <div style="font-size:4rem;margin-bottom:1rem">✅</div>
-  <h1>Payment <span>Successful!</span></h1>
-  <p class="sub">Alhamdulillah — your subscription is now active.</p>
+  <h1>Checkout <span>Returned</span></h1>
+  <p class="sub">Payment and subscription activation have not been verified on this page.</p>
   <p style="color:var(--muted);font-size:.9rem;margin:1rem 0">
-    Session: <code>${sessionId || "N/A"}</code>
+    Session reference: <code>${reference}</code>
   </p>
   <div style="background:var(--s2);border:1px solid var(--bdr);border-radius:12px;padding:1.25rem;margin:1.5rem 0">
-    <p style="font-size:.9rem;color:var(--muted);margin:0">Your services are being provisioned. You'll receive a confirmation email shortly.</p>
+    <p style="font-size:.9rem;color:var(--muted);margin:0">Check your payment receipt and account status before purchasing again. Contact support if your access has not been confirmed.</p>
   </div>
-  <div style="display:flex;gap:1rem;justify-content:center;flex-wrap:wrap">
-    <a href="/dashboard" class="btn btn-primary" style="text-decoration:none">Go to Dashboard</a>
-    <a href="https://discord.gg/darcloud" class="btn btn-outline" style="text-decoration:none">Join Discord</a>
-  </div>
-  <p style="text-align:center;margin-top:1.5rem;font-size:.8rem;color:var(--muted)">
-    2% Zakat automatically calculated and distributed • Shariah-compliant
-  </p>
+  <a href="/dashboard" class="btn btn-primary" style="text-decoration:none">Go to Dashboard</a>
 </div>`);
   }
-  return pageShell("Payment Cancelled", `
+  return pageShell("Checkout Cancelled", `
 <div class="card" style="max-width:500px;text-align:center">
   <div style="font-size:4rem;margin-bottom:1rem">↩️</div>
   <h1>Checkout <span>Cancelled</span></h1>
-  <p class="sub">No charges were made. You can try again anytime.</p>
+  <p class="sub">You returned from checkout. This page has not verified whether any payment was completed.</p>
   <div style="display:flex;gap:1rem;justify-content:center;flex-wrap:wrap;margin-top:1.5rem">
-    <a href="/checkout/pro" class="btn btn-primary" style="text-decoration:none">Try Again</a>
+    <a href="/checkout/pro" class="btn btn-primary" style="text-decoration:none">Return to Checkout</a>
     <a href="https://www.darcloud.host/" class="btn btn-outline" style="text-decoration:none">Back to Home</a>
   </div>
 </div>`);
