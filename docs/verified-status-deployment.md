@@ -90,7 +90,8 @@ remote database migration, or provider secret access.
 
 1. An authenticated Cloudflare account with permission to deploy the existing
    Worker. Local `wrangler whoami` reported unauthenticated during preparation.
-   The presence or correctness of GitHub repository secrets was not verified.
+   Use the connection preflight below to check GitHub's existing credential
+   configuration; secret names in a workflow are not proof of valid access.
    On 2026-09-21 the browser dashboard remained on its security verification
    screen after one reload; no account authentication was completed.
 2. Authorized access to the existing bot host to install this patch and restart
@@ -158,6 +159,29 @@ the authenticated origin, verify unavailable/stale behavior, and confirm
 anonymous/member denial plus authorized administrator access. Do not exercise
 payment mutations for verification. No deployment ID or successful public
 release can be reported until these checks actually run.
+
+## Connection check without the browser
+
+`Cloudflare connection preflight` in
+`.github/workflows/cloudflare-preflight.yml` uses the existing GitHub secret
+names `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`. It runs when this
+workflow file changes on `fix/verified-public-status`; its job also checks the
+exact repository and branch. It does not check out repository code or install
+dependencies and has no GitHub token permissions.
+
+The preflight first reports only whether those two values are configured.
+If present, it makes one fixed-origin HTTPS GET for the existing `quranchain1`
+Worker's deployment history. Redirects are rejected, reads are bounded, and
+only validated deployment/version identifiers, percentages and timestamps can
+be printed. It never publishes a Worker, runs a migration, changes DNS, or
+prints secret values or raw provider responses.
+
+Missing configuration or rejected credentials are blockers, not deployment
+success. Configure the required values through the repository's Actions secret
+settings or an approved secure connection; never put them in source or chat.
+A successful preflight proves read access to existing deployment metadata. It
+does not prove write permission or satisfy the bot-host, origin, administrator,
+or payment-fulfillment prerequisites above.
 
 ## Compatibility and limitations
 

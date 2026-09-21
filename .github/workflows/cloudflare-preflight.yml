@@ -1,0 +1,129 @@
+name: Cloudflare connection preflight
+
+# This inspects the existing Worker only. It never checks out repository code,
+# installs dependencies, changes provider configuration, or deploys anything.
+'on':
+  push:
+    branches: [fix/verified-public-status]
+    paths: [.github/workflows/cloudflare-preflight.yml]
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  inspect:
+    name: Read existing Cloudflare deployment
+    if: github.repository == 'Oabu77/quranchain1' && github.ref == 'refs/heads/fix/verified-public-status'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Check connection without exposing credentials
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        shell: python
+        run: |
+          import datetime
+          import json
+          import math
+          import os
+          import re
+          import socket
+          import urllib.error
+          import urllib.request
+
+          observed_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+          def finish(status, code=1, **fields):
+              print(json.dumps({"observed_at": observed_at, "status": status,
+                                "worker": "quranchain1", **fields}, sort_keys=True))
+              raise SystemExit(code)
+
+          token = os.environ.get("CLOUDFLARE_API_TOKEN", "").strip()
+          account = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "").strip()
+          configured = {
+              "CLOUDFLARE_API_TOKEN": bool(token),
+              "CLOUDFLARE_ACCOUNT_ID": bool(account),
+          }
+          print(json.dumps({"configured": configured}, sort_keys=True))
+          if not all(configured.values()):
+              finish("missing_configuration")
+          if not re.fullmatch(r"[0-9a-fA-F]{32}", account):
+              finish("invalid_account_id")
+          account = account.lower()
+          if not token.isascii() or any(ord(char) < 33 or ord(char) > 126 for char in token):
+              finish("invalid_token_format")
+
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, req, fp, code, msg, headers, newurl):
+                  return None
+
+          url = ("https://api.cloudflare.com/client/v4/accounts/" + account
+                 + "/workers/scripts/quranchain1/deployments?per_page=1")
+          request = urllib.request.Request(
+              url, method="GET", headers={"Authorization": "Bearer " + token,
+                                          "Accept": "application/json"})
+          opener = urllib.request.build_opener(NoRedirect())
+          try:
+              with opener.open(request, timeout=10) as response:
+                  if response.status != 200:
+                      finish("unexpected_http_status", http_status=int(response.status))
+                  raw = response.read(65537)
+          except urllib.error.HTTPError as error:
+              status = int(error.code)
+              error.close()
+              finish("redirect_rejected" if 300 <= status < 400 else "http_error",
+                     http_status=status)
+          except (urllib.error.URLError, TimeoutError, socket.timeout, OSError):
+              finish("connection_failed")
+          except ValueError:
+              finish("invalid_request")
+
+          if len(raw) > 65536:
+              finish("response_too_large")
+          try:
+              payload = json.loads(raw)
+          except (ValueError, UnicodeError, RecursionError):
+              finish("invalid_json")
+          if not isinstance(payload, dict) or payload.get("success") is not True:
+              finish("provider_error")
+          result = payload.get("result")
+          if not isinstance(result, dict) or not isinstance(result.get("deployments"), list):
+              finish("invalid_response")
+          deployments = result["deployments"]
+          if not deployments:
+              finish("connected_no_deployments", code=0)
+
+          # Copy only documented identifiers, traffic percentages and timestamps.
+          # Never print provider messages, annotations, account details or headers.
+          def identifier(value):
+              if not isinstance(value, str) or not re.fullmatch(
+                  r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}", value
+              ):
+                  raise ValueError()
+              return value.lower()
+
+          try:
+              latest = deployments[0]
+              deployment_id = identifier(latest["id"])
+              created = datetime.datetime.fromisoformat(latest["created_on"].replace("Z", "+00:00"))
+              if created.tzinfo is None:
+                  raise ValueError()
+              source_versions = latest["versions"]
+              if not isinstance(source_versions, list) or not source_versions:
+                  raise ValueError()
+              versions = []
+              for version in source_versions:
+                  percentage = version["percentage"]
+                  if (isinstance(percentage, bool) or not isinstance(percentage, (int, float))
+                      or not math.isfinite(percentage) or not 0 < percentage <= 100):
+                      raise ValueError()
+                  versions.append({"version_id": identifier(version["version_id"]),
+                                   "percentage": percentage})
+              if not math.isclose(sum(v["percentage"] for v in versions), 100, abs_tol=0.01):
+                  raise ValueError()
+          except (KeyError, TypeError, ValueError, AttributeError, OverflowError):
+              finish("invalid_deployment_metadata")
+
+          finish("connected", code=0, deployment_id=deployment_id,
+                 created_on=created.astimezone(datetime.timezone.utc).isoformat(), versions=versions)
