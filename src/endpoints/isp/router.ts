@@ -15,14 +15,39 @@ import {
 import { WifiDirectory, WifiHotspotRegister, CoverageMap } from "./wifiDirectory";
 import { SatelliteTracker, SatellitesOverhead, GroundStations, GroundStationRegister } from "./satelliteTracker";
 import { CellTowerRegistry, SignalMap } from "./cellTowers";
+import { authorizeIspRequest } from "./security";
 
-export const ispRouter = fromHono(new Hono());
+export const ispRouter = fromHono(new Hono<{ Bindings: Env }>());
+
+// Deliberately public catalog/map routes. These must remain before the control-plane gate.
+ispRouter.get("/plans", IspPlans);
+ispRouter.get("/wifi-directory", WifiDirectory);
+ispRouter.get("/coverage-map", CoverageMap);
+ispRouter.get("/satellites", SatelliteTracker);
+ispRouter.get("/satellites/overhead", SatellitesOverhead);
+
+// Everything below this point is ISP/telecom infrastructure control-plane data or mutation.
+// Fail closed before handlers and D1 access when strong server-managed credentials are absent.
+ispRouter.use("*", async (c, next) => {
+  const env = c.env as Env & {
+    DARCLOUD_ISP_READ_TOKEN?: string;
+    DARCLOUD_ISP_MUTATION_TOKEN?: string;
+  };
+  const authorization = await authorizeIspRequest(
+    c.req.method,
+    c.req.header("Authorization"),
+    env.DARCLOUD_ISP_READ_TOKEN,
+    env.DARCLOUD_ISP_MUTATION_TOKEN,
+  );
+  if (!authorization.ok) {
+    return c.json({ success: false, error: authorization.error }, authorization.status);
+  }
+  await next();
+  c.res.headers.set("Cache-Control", "no-store");
+});
 
 // Dashboard
 ispRouter.get("/dashboard", IspDashboard);
-
-// Plans
-ispRouter.get("/plans", IspPlans);
 
 // Subscribers
 ispRouter.get("/subscribers", IspSubscribers);
@@ -39,17 +64,11 @@ ispRouter.get("/firmware", IspFirmwareList);
 ispRouter.get("/cellular", IspCellularList);
 ispRouter.post("/cellular/provision", IspCellularProvision);
 
-// Service Areas / Coverage
+// Service Areas / Coverage administration
 ispRouter.get("/coverage", IspServiceAreas);
 
-// WiFi Hotspot Directory (public — shows up on global WiFi maps)
-ispRouter.get("/wifi-directory", WifiDirectory);
+// WiFi hotspot registration mutates the service directory.
 ispRouter.post("/wifi-hotspot/register", WifiHotspotRegister);
-ispRouter.get("/coverage-map", CoverageMap);
-
-// Satellite Tracking (public CelesTrak data — fully legal)
-ispRouter.get("/satellites", SatelliteTracker);
-ispRouter.get("/satellites/overhead", SatellitesOverhead);
 
 // Ground Stations (satellite uplink nodes)
 ispRouter.get("/ground-stations", GroundStations);
