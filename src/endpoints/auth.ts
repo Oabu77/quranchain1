@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { CheckoutError, createOwnedCheckout } from "./checkout";
 
 const auth = new Hono<{ Bindings: Env }>();
 
@@ -135,6 +136,32 @@ async function requireAuth(c: { req: { header: (name: string) => string | undefi
   return null; // Continue
 }
 
+// Administrative access is assigned by the operator to existing database IDs.
+// A public signup, submitted email address, or JWT role label cannot grant it.
+async function requireAdmin(c: Parameters<typeof requireAuth>[0] & {
+  env: { JWT_SECRET?: string; ADMIN_USER_IDS?: string; DB: D1Database };
+  get: (key: string) => unknown;
+  header: (name: string, value: string) => void;
+}): Promise<Response | null> {
+  c.header("Cache-Control", "no-store");
+  const authError = await requireAuth(c);
+  if (authError) return authError;
+
+  const payload = c.get("user") as Record<string, unknown>;
+  const subject = String(payload.sub ?? "");
+  const allowedIds = new Set((c.env.ADMIN_USER_IDS ?? "").split(",").map((id) => id.trim()).filter((id) => /^[1-9]\d*$/.test(id)));
+  if (!/^[1-9]\d*$/.test(subject) || !Number.isSafeInteger(Number(subject)) ||
+      (payload.userId !== undefined && String(payload.userId) !== subject) ||
+      !allowedIds.has(subject)) {
+    return c.json({ error: "Administrator access required" }, 403);
+  }
+
+  // Deleted users must not retain administrative access for the JWT lifetime.
+  const user = await c.env.DB.prepare("SELECT id FROM users WHERE id = ?").bind(Number(subject)).first<{ id: number }>();
+  if (!user) return c.json({ error: "Administrator access required" }, 403);
+  return null;
+}
+
 // Auto-migrate: ensure tables exist on first request
 async function ensureTables(db: D1Database) {
   await db.batch([
@@ -264,9 +291,8 @@ auth.post("/auth/signup", async (c) => {
     }
 
     const passwordHash = await hashPassword(password);
-    const validPlan = ["starter", "pro", "enterprise"].includes(plan || "")
-      ? plan
-      : "starter";
+    // A requested paid plan is checkout intent, not an earned entitlement.
+    const validPlan = "starter";
 
     const created = await db
       .prepare(
@@ -360,93 +386,23 @@ auth.post("/auth/login", async (c) => {
   }
 });
 
-// POST /api/checkout/session — Create a real Stripe checkout session
+// POST /api/checkout/session — authenticated ownership-bound checkout only
+// Session creation leaves all account entitlements and revenue records unchanged.
 auth.post("/checkout/session", async (c) => {
   const start = Date.now();
+  c.header("Cache-Control", "no-store");
+  if (!c.env.JWT_SECRET?.trim()) return c.json({ error: "Sign-in is temporarily unavailable." }, 503);
+  const authError = await requireAuth(c as never);
+  if (authError) return authError;
+  let body: unknown;
+  try { body = await c.req.json(); } catch { return c.json({ error: "A valid JSON checkout request is required." }, 400); }
   try {
-    const db = c.env.DB;
-    await ensureTables(db);
-    const body = await c.req.json<{
-      email?: string;
-      name?: string;
-      plan?: string;
-      discord_id?: string;
-    }>();
-    const { email, name, plan, discord_id } = body;
-
-    if (!email || !plan) {
-      return c.json({ error: "Email and plan are required" }, 400);
-    }
-
-    const plans: Record<string, { amount: number; label: string; price_id: string; mode: string }> = {
-      pro: { amount: 4900, label: "DarCloud Professional", price_id: "price_1TAR0SAqs2ifkfkqOKa2Rzq3", mode: "subscription" },
-      enterprise: { amount: 49900, label: "DarCloud Enterprise", price_id: "price_1TAR0TAqs2ifkfkqdtr8kWEf", mode: "subscription" },
-      startup: { amount: 49900, label: "DarCloud Enterprise", price_id: "price_1TAR0TAqs2ifkfkqdtr8kWEf", mode: "subscription" },
-      fungimesh: { amount: 1999, label: "FungiMesh Node", price_id: "price_1TAR0TAqs2ifkfkqqrjzoLdm", mode: "subscription" },
-      hwc: { amount: 9900, label: "HWC Premium", price_id: "price_1TAR0TAqs2ifkfkqKFPTW7hM", mode: "subscription" },
-    };
-
-    const selected = plans[plan];
-    if (!selected) {
-      return c.json({
-        message: `Plan "${plan}" registered. Our team will contact you for custom pricing.`,
-        plan, email,
-      }, 200);
-    }
-
-    // Record the checkout intent in D1
-    await db.prepare(
-      "UPDATE users SET plan = ?, updated_at = datetime('now') WHERE email = ?",
-    ).bind(plan, email.toLowerCase()).run();
-
-    // Create real Stripe Checkout Session
-    const stripeKey = c.env.STRIPE_SECRET_KEY;
-    if (stripeKey) {
-      const params = new URLSearchParams();
-      params.append("mode", selected.mode);
-      params.append("line_items[0][price]", selected.price_id);
-      params.append("line_items[0][quantity]", "1");
-      params.append("customer_email", email);
-      params.append("success_url", "https://darcloud.host/checkout/success?session_id={CHECKOUT_SESSION_ID}");
-      params.append("cancel_url", "https://darcloud.host/checkout/cancel");
-      params.append("metadata[product]", plan);
-      if (discord_id) params.append("metadata[discord_id]", discord_id);
-
-      const stripeRes = await fetch("https://api.stripe.com/v1/checkout/sessions", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${stripeKey}`,
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-        body: params.toString(),
-      });
-      const session = await stripeRes.json() as any;
-      if (!session.error && session.url) {
-        return c.json({
-          success: true,
-          session_id: session.id,
-          checkout_url: session.url,
-          plan: selected.label,
-          amount: selected.amount,
-          currency: "usd",
-          payment_processor: "DarPay™ × Stripe",
-          execution_ms: Date.now() - start,
-        });
-      }
-    }
-
-    // Fallback if Stripe not configured
-    return c.json({
-      success: true,
-      message: `${selected.label} subscription initiated via DarPay™.`,
-      plan, amount: selected.amount, currency: "usd",
-      payment_processor: "DarPay™",
-      checkout_url: `https://darcloud.host/checkout/${plan}`,
-      execution_ms: Date.now() - start,
-    });
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Checkout failed";
-    return c.json({ error: message, execution_ms: Date.now() - start }, 500);
+    const identity = (c as unknown as { get: (key: string) => Record<string, unknown> }).get("user");
+    const result = await createOwnedCheckout(c.env, identity, body);
+    return c.json({ ...result, execution_ms: Date.now() - start });
+  } catch (error) {
+    if (error instanceof CheckoutError) return c.json({ error: error.message }, error.status);
+    return c.json({ error: "Checkout is temporarily unavailable." }, 503);
   }
 });
 
@@ -558,18 +514,8 @@ auth.get("/auth/me", async (c) => {
 // GET /api/admin/stats — Admin dashboard stats (protected)
 auth.get("/admin/stats", async (c) => {
   const start = Date.now();
-  const secret = getJwtSecret(c.env);
-  let token: string | null = null;
-  const authHeader = c.req.header("Authorization");
-  if (authHeader?.startsWith("Bearer ")) {
-    token = authHeader.substring(7);
-  }
-  if (!token) {
-    token = getCookieToken(c.req.header("Cookie"));
-  }
-  if (!token) return c.json({ error: "Authorization required" }, 401);
-  const payload = await verifyJWT(token, secret);
-  if (!payload) return c.json({ error: "Invalid or expired token" }, 401);
+  const authError = await requireAdmin(c as never);
+  if (authError) return authError;
 
   const db = c.env.DB;
   await ensureTables(db);
@@ -662,4 +608,4 @@ auth.get("/lookup", async (c) => {
   return c.json({ user: { id: user.id, name: user.name, email: user.email, plan: user.plan } });
 });
 
-export { auth, requireAuth, verifyJWT, getJwtSecret };
+export { auth, requireAuth, requireAdmin, verifyJWT, getJwtSecret };

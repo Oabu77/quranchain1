@@ -24,6 +24,7 @@ if (!DISCORD_TOKEN) { console.error("Missing DISCORD_TOKEN"); process.exit(1); }
 // ── Load Modules ──────────────────────────────────────────
 const { getOrCreateWallet, addBalance, transfer, canDoAction, stmts, generateTxHash, tradeQrnForUsd, tradeUsdForQrn, getUsdBalance, QRN_TO_USD_RATE, TRADE_FEE_PERCENT } = require("./database");
 const { mineBlock, getChainStats, LIVE_CHAINS, VALIDATORS, REVENUE_SPLIT, MAX_SUPPLY } = require("./blockchain");
+const { createChainStatusReader, createChainStatusHandler } = require("./chain-status");
 const { startQuiz, answerQuiz, startScramble, answerScramble, claimDaily, openTreasure, activeQuizzes, activeScrambles } = require("./games");
 
 // ── DarCloud Empire Shared Modules ────────────────────────
@@ -912,6 +913,7 @@ client.once("ready", () => {
   // Start IPC server for cross-bot communication + mesh routing
   const meshHandlers = meshRouter.getIpcHandlers();
   botIpc.startIpcServer("quranchain", {
+    "/chain-status": createChainStatusHandler(createChainStatusReader(require("./database").db)),
     "/create-wallet": async (req, body) => {
       const wallet = getOrCreateWallet(body.discord_id, body.discord_tag);
       onboardingDb.getOrCreateMember(body.discord_id, body.discord_tag);

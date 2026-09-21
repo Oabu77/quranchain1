@@ -1,15 +1,35 @@
-import { SELF } from "cloudflare:test";
+import { env } from "cloudflare:test";
+import app from "../../src/index";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+let adminToken = "";
+let adminId = "";
+let requestCount = 0;
+async function adminFetch(url: string, init: RequestInit = {}) {
+	const headers = new Headers(init.headers);
+	headers.set("Authorization", `Bearer ${adminToken}`);
+	return app.request(url, { ...init, headers }, { ...env, ADMIN_USER_IDS: adminId });
+}
+
 describe("Contracts and DarLaw API Integration Tests", () => {
-	beforeEach(() => {
+	beforeEach(async () => {
 		vi.clearAllMocks();
+		const suffix = ++requestCount;
+		const response = await app.request("http://local.test/api/auth/signup", {
+			method: "POST",
+			headers: { "Content-Type": "application/json", "X-Forwarded-For": `10.32.0.${suffix}` },
+			body: JSON.stringify({ name: "Contracts Admin", email: `contracts-admin-${suffix}@example.com`, password: "test-only-long-password" }),
+		}, env);
+		expect(response.status).toBe(200);
+		const { token } = await response.json<{ token: string }>();
+		adminToken = token;
+		adminId = String(JSON.parse(atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))).sub);
 	});
 
 	// ── Companies ──
 	describe("GET /api/contracts/companies", () => {
 		it("should return companies list", async () => {
-			const res = await SELF.fetch("http://local.test/api/contracts/companies");
+			const res = await adminFetch("http://local.test/api/contracts/companies");
 			const body = await res.json<{
 				success: boolean;
 				companies: any[];
@@ -26,7 +46,7 @@ describe("Contracts and DarLaw API Integration Tests", () => {
 	// ── Seed Companies ──
 	describe("POST /api/contracts/companies/seed", () => {
 		it("should seed all 101 companies", async () => {
-			const res = await SELF.fetch("http://local.test/api/contracts/companies/seed", {
+			const res = await adminFetch("http://local.test/api/contracts/companies/seed", {
 				method: "POST",
 			});
 			const body = await res.json<{
@@ -44,11 +64,11 @@ describe("Contracts and DarLaw API Integration Tests", () => {
 	describe("POST /api/contracts/seed-all", () => {
 		it("should seed contracts after companies", async () => {
 			// Ensure companies exist first
-			await SELF.fetch("http://local.test/api/contracts/companies/seed", {
+			await adminFetch("http://local.test/api/contracts/companies/seed", {
 				method: "POST",
 			});
 
-			const res = await SELF.fetch("http://local.test/api/contracts/seed-all", {
+			const res = await adminFetch("http://local.test/api/contracts/seed-all", {
 				method: "POST",
 			});
 			const body = await res.json<{
@@ -59,13 +79,16 @@ describe("Contracts and DarLaw API Integration Tests", () => {
 			expect(res.status).toBe(200);
 			expect(body.success).toBe(true);
 			expect(body.summary.total_contracts).toBeGreaterThanOrEqual(0);
+			expect(body.summary).not.toHaveProperty("total_monthly_revenue");
+			expect(body.summary).not.toHaveProperty("total_annual_revenue");
+			expect(body.summary).toHaveProperty("collected_revenue", null);
 		});
 	});
 
 	// ── List Contracts ──
 	describe("GET /api/contracts", () => {
 		it("should return contracts list", async () => {
-			const res = await SELF.fetch("http://local.test/api/contracts");
+			const res = await adminFetch("http://local.test/api/contracts");
 			const body = await res.json<{
 				success: boolean;
 				contracts: any[];
@@ -80,23 +103,25 @@ describe("Contracts and DarLaw API Integration Tests", () => {
 
 	// ── Revenue ──
 	describe("GET /api/contracts/revenue", () => {
-		it("should return revenue breakdown", async () => {
-			const res = await SELF.fetch("http://local.test/api/contracts/revenue");
+		it("should return contractual amounts without claiming collected revenue", async () => {
+			const res = await adminFetch("http://local.test/api/contracts/revenue");
 			const body = await res.json<{
 				success: boolean;
-				totals: { monthly: string };
+				contractual_amounts: { monthly: string };
+				collected_revenue: null;
 			}>();
 
 			expect(res.status).toBe(200);
 			expect(body.success).toBe(true);
-			expect(body.totals.monthly).toBeTruthy();
+			expect(body.contractual_amounts.monthly).toBeTruthy();
+			expect(body.collected_revenue).toBeNull();
 		});
 	});
 
 	// ── DarLaw ──
 	describe("GET /api/contracts/darlaw/agents", () => {
 		it("should return DarLaw agents list", async () => {
-			const res = await SELF.fetch("http://local.test/api/contracts/darlaw/agents");
+			const res = await adminFetch("http://local.test/api/contracts/darlaw/agents");
 			const body = await res.json<{
 				success: boolean;
 				agents: any[];
@@ -111,7 +136,7 @@ describe("Contracts and DarLaw API Integration Tests", () => {
 	// ── Legal Filings ──
 	describe("POST /api/contracts/legal/file-all", () => {
 		it("should seed legal filings", async () => {
-			const res = await SELF.fetch("http://local.test/api/contracts/legal/file-all", {
+			const res = await adminFetch("http://local.test/api/contracts/legal/file-all", {
 				method: "POST",
 			});
 			const body = await res.json<{
@@ -127,7 +152,7 @@ describe("Contracts and DarLaw API Integration Tests", () => {
 
 	describe("GET /api/contracts/legal/filings", () => {
 		it("should return legal filings list", async () => {
-			const res = await SELF.fetch("http://local.test/api/contracts/legal/filings");
+			const res = await adminFetch("http://local.test/api/contracts/legal/filings");
 			const body = await res.json<{
 				success: boolean;
 				filings: any[];
@@ -142,7 +167,7 @@ describe("Contracts and DarLaw API Integration Tests", () => {
 	// ── IP Portfolio ──
 	describe("POST /api/contracts/legal/protect-ip", () => {
 		it("should seed IP portfolio", async () => {
-			const res = await SELF.fetch("http://local.test/api/contracts/legal/protect-ip", {
+			const res = await adminFetch("http://local.test/api/contracts/legal/protect-ip", {
 				method: "POST",
 			});
 			const body = await res.json<{
@@ -158,7 +183,7 @@ describe("Contracts and DarLaw API Integration Tests", () => {
 
 	describe("GET /api/contracts/legal/ip", () => {
 		it("should return IP protections list", async () => {
-			const res = await SELF.fetch("http://local.test/api/contracts/legal/ip");
+			const res = await adminFetch("http://local.test/api/contracts/legal/ip");
 			const body = await res.json<{
 				success: boolean;
 				ip_protections: any[];
@@ -173,7 +198,7 @@ describe("Contracts and DarLaw API Integration Tests", () => {
 	// ── Bootstrap All ──
 	describe("POST /api/contracts/bootstrap", () => {
 		it("should bootstrap entire ecosystem", async () => {
-			const res = await SELF.fetch("http://local.test/api/contracts/bootstrap", {
+			const res = await adminFetch("http://local.test/api/contracts/bootstrap", {
 				method: "POST",
 			});
 			const body = await res.json<{
@@ -197,11 +222,11 @@ describe("Contracts and DarLaw API Integration Tests", () => {
 	describe("OrDar Law to DarLaw Migration", () => {
 		it("should not have any ordar-law companies after seeding", async () => {
 			// Bootstrap to create tables and seed data
-			await SELF.fetch("http://local.test/api/contracts/bootstrap", {
+			await adminFetch("http://local.test/api/contracts/bootstrap", {
 				method: "POST",
 			});
 
-			const res = await SELF.fetch("http://local.test/api/contracts/companies");
+			const res = await adminFetch("http://local.test/api/contracts/companies");
 			const body = await res.json<{
 				success: boolean;
 				companies: Array<{ company_id: string; name: string }>;

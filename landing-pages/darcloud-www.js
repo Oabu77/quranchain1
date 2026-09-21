@@ -8,7 +8,7 @@ var LANDING = `<!DOCTYPE html>
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>DarCloud \u2014 Quantum-Secured Mesh Cloud Platform</title>
-<meta name="description" content="DarCloud: Islamic-principled blockchain ecosystem. 340K mesh nodes, 66 AI agents, quantum encryption, 47 blockchain networks.">
+<meta name="description" content="DarCloud: Islamic-principled blockchain ecosystem. 340K mesh nodes, 66 AI agents, quantum encryption, planned multi-chain integrations.">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>\u2601\uFE0F</text></svg>">
 <style>
 :root{--bg:#07090f;--s1:#0d1117;--s2:#161b22;--bdr:#21262d;--cyan:#00d4ff;--emerald:#10b981;--gold:#f59e0b;--purple:#8b5cf6;--txt:#e6edf3;--muted:#8b949e;--grad1:linear-gradient(135deg,#00d4ff,#10b981);--grad2:linear-gradient(135deg,#8b5cf6,#00d4ff)}
@@ -110,10 +110,10 @@ footer{padding:3rem 2rem;border-top:1px solid var(--bdr);text-align:center}
 </nav>
 
 <section class="hero">
-  <div class="hero-badge"><span class="dot"></span> All Systems Operational \u2014 47 Chains Live</div>
+  <div class="hero-badge"><span class="dot"></span> DarCloud Platform \u2014 QuranChain Ledger Status</div>
   <p class="bismillah">\u0628\u0650\u0633\u0652\u0645\u0650 \u0627\u0644\u0644\u064E\u0651\u0647\u0650 \u0627\u0644\u0631\u064E\u0651\u062D\u0652\u0645\u064E\u0646\u0650 \u0627\u0644\u0631\u064E\u0651\u062D\u0650\u064A\u0645\u0650</p>
   <h1>The Future of <span>Islamic Cloud</span> Infrastructure</h1>
-  <p>Quantum-secured mesh cloud platform. 340,000 nodes. 66 AI agents. 47 blockchain networks. 100% Shariah-compliant. Zero riba.</p>
+  <p>Quantum-secured mesh cloud platform. 340,000 nodes. 66 AI agents. Planned multi-chain integrations. 100% Shariah-compliant. Zero riba.</p>
   <div class="hero-btns">
     <a class="btn btn-primary" href="https://darcloud.host/signup">Create Account</a>
     <a class="btn btn-outline" href="https://api.darcloud.host/api">Explore API</a>
@@ -124,7 +124,7 @@ footer{padding:3rem 2rem;border-top:1px solid var(--bdr);text-align:center}
   <div class="stats">
     <div class="stat"><div class="stat-value">340K</div><div class="stat-label">Mesh Nodes</div></div>
     <div class="stat"><div class="stat-value">66</div><div class="stat-label">AI Agents</div></div>
-    <div class="stat"><div class="stat-value">47</div><div class="stat-label">Blockchains</div></div>
+    <div class="stat"><div class="stat-value">47</div><div class="stat-label">Planned Chain Integrations</div></div>
     <div class="stat"><div class="stat-value">90+</div><div class="stat-label">Microservices</div></div>
     <div class="stat"><div class="stat-value">31</div><div class="stat-label">USA Markets</div></div>
     <div class="stat"><div class="stat-value">0%</div><div class="stat-label">Riba / Interest</div></div>
@@ -135,13 +135,13 @@ footer{padding:3rem 2rem;border-top:1px solid var(--bdr);text-align:center}
   <div class="container">
     <div class="section-head">
       <h2>Ecosystem Services</h2>
-      <p>Every service is Shariah-compliant, revenue-generating, and powered by our AI workforce.</p>
+      <p>Explore services designed around Islamic principles, configurable business tools, and AI assistance.</p>
     </div>
     <div class="grid">
       <div class="card">
         <div class="card-icon">\u26D3\uFE0F</div>
         <h3>QuranChain Blockchain</h3>
-        <p>Islamic blockchain network with AI validators, gas toll system across 47 chains, and immutable Quran preservation.</p>
+        <p>Read-only status of QuranChain's local ledger. Multi-chain integrations, validator operations, and gas toll collection remain planned capabilities pending verification.</p>
         <a class="card-link" href="https://blockchain.darcloud.host">Explore Chain \u2192</a>
       </div>
       <div class="card">

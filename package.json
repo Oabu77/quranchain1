@@ -1,9 +1,9 @@
 {
 	"name": "quranchain1",
 	"version": "5.4.0",
-	"description": "QuranChain™ DarCloud API — 101 companies, 77 AI agents, JWT auth, inter-company contracts, DarLaw AI, Islamic fintech. Built on Cloudflare Workers + D1 + Hono + chanfana OpenAPI.",
+	"description": "QuranChain\u2122 DarCloud API \u2014 101 companies, 77 AI agents, JWT auth, inter-company contracts, DarLaw AI, Islamic fintech. Built on Cloudflare Workers + D1 + Hono + chanfana OpenAPI.",
 	"cloudflare": {
-		"label": "QuranChain™ DarCloud API",
+		"label": "QuranChain\u2122 DarCloud API",
 		"products": [
 			"Workers",
 			"D1"
@@ -38,6 +38,7 @@
 		"predeploy": "wrangler d1 migrations apply DB --remote",
 		"schema": "npx chanfana",
 		"seedLocalDb": "wrangler d1 migrations apply DB --local",
-		"test": "wrangler deploy --dry-run && npx vitest run --config tests/vitest.config.mts"
+		"test": "wrangler deploy --dry-run && npx vitest run --config tests/vitest.config.mts && npm run test:ledger",
+		"test:ledger": "node --test quranchain-bot/chain-status.node-test.cjs tests/chain-status-page.node-test.cjs"
 	}
 }

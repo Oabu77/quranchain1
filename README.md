@@ -1,6 +1,6 @@
 # QuranChain™ — DarCloud API
 
-**v5.4.0** · Production API powering the DarCloud infrastructure stack.
+**v5.4.0** · Worker API for the DarCloud infrastructure stack.
 
 > بِسْمِ اللَّهِ الرَّحْمَنِ الرَّحِيمِ
 
@@ -10,10 +10,14 @@
 |--------|-------|
 | Companies | 101 |
 | Inter-company contracts | 175+ |
-| Monthly revenue | $402K+ |
+| Collected revenue | Not verified; contract templates are not payment evidence |
 | AI agents | 77 (66 fleet + 11 DarLaw) |
 | D1 tables | 59 |
-| Tests | 41 passing |
+| Tests | Run the verification commands below for current results |
+
+Inventory counts above describe project configuration, not verified production activity.
+See [the reviewed deployment plan](docs/verified-status-deployment.md) for the actual
+ledger source, read-only API contract, access requirements, and release blockers.
 
 ## Stack
 
@@ -64,6 +68,24 @@
 | GET | `/api/contracts/legal/filings` | Legal filings |
 | GET | `/api/contracts/legal/ip` | IP portfolio (75 TM, 27 patents, 8 ©) |
 | POST | `/api/contracts/bootstrap` | Bootstrap full ecosystem |
+
+All `/api/contracts/*`, `/api/admin/stats`, and `/api/revenue/*` routes require
+an authenticated existing user explicitly listed in `ADMIN_USER_IDS`. Contract
+amounts are stored obligations, potentially seeded, and are not collected revenue.
+
+### Read-only Ledger Status
+
+`GET /api/chain/status` reports counts from the QuranChain bot's SQLite ledger,
+with `source`, `observed_at`, `fetched_at`, and `fresh` / `stale` / `unavailable`
+states. No upstream configured means HTTP 503 and `data: null`. Observations
+older than 60 seconds return 503 with the historical observation explicitly
+marked stale. Invalid or failed upstream responses return 502 with no fallback
+counts. No ledger hash is represented as independently verified.
+
+On `blockchain.darcloud.host` and `blockchain.darcloud.net`, `/health` uses the
+same status contract. Undefined `/api/*` paths on those hosts return 404.
+The main `/health` checks D1; unmeasured fleet services are `unknown`, never
+assumed online.
 
 ### Infrastructure (OpenAPI)
 | Method | Path | Description |

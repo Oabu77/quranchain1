@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { requireAdmin } from "./auth";
 import { ALL_COMPANIES } from "../data/companies";
 import { ALL_CONTRACTS } from "../data/contracts-data";
 import {
@@ -12,6 +13,12 @@ import {
 import { ALL_LEGAL_FILINGS } from "../data/legal-filings";
 
 const contracts = new Hono<{ Bindings: Env }>();
+
+contracts.use("*", async (c, next) => {
+  const authError = await requireAdmin(c as never);
+  if (authError) return authError;
+  await next();
+});
 
 // ── Auto-migrate ──
 async function ensureTables(db: D1Database) {
@@ -150,7 +157,15 @@ contracts.get("/", async (c) => {
   const db = c.env.DB;
   await ensureTables(db);
   const { results } = await db.prepare("SELECT * FROM contracts ORDER BY created_at DESC").all();
-  return c.json({ success: true, contracts: results, total: results.length });
+  return c.json({
+    success: true,
+    source: "D1.contracts",
+    observed_at: new Date().toISOString(),
+    payment_verification: "unverified",
+    note: "Stored records may include seeded data; contract status and fees do not verify payments or collections.",
+    contracts: results,
+    total: results.length,
+  });
 });
 
 contracts.post("/sign", async (c) => {
@@ -174,7 +189,7 @@ contracts.post("/sign", async (c) => {
   await db.prepare(
     `INSERT INTO clients (client_id, company_id, client_company_id, service_type, contract_id, monthly_amount) VALUES (?, ?, ?, ?, ?, ?)`
   ).bind(clientId, body.provider, body.client, body.contract_type, contractId, body.monthly_fee || 0).run();
-  return c.json({ success: true, contract_id: contractId, client_id: clientId, sha256_hash: hash, autopay: "active", shariah_compliant: true, founder_royalty: "30% immutable", execution_ms: Date.now() - start });
+  return c.json({ success: true, contract_id: contractId, client_id: clientId, sha256_hash: hash, autopay: "not_verified", shariah_compliant: true, founder_royalty: "30% immutable", execution_ms: Date.now() - start });
 });
 
 contracts.post("/seed-all", async (c) => {
@@ -195,21 +210,20 @@ contracts.post("/seed-all", async (c) => {
       await db.prepare(
         `INSERT INTO clients (client_id, company_id, client_company_id, service_type, contract_id, monthly_amount) VALUES (?, ?, ?, ?, ?, ?)`
       ).bind(clientId, ctr.provider, ctr.client, ctr.type, contractId, ctr.fee).run();
-      results.push({ contract_id: contractId, title: ctr.title, provider: ctr.provider, client: ctr.client, monthly_fee: `$${ctr.fee}`, autopay: "active", sha256: hash.substring(0, 16) + "..." });
+      results.push({ contract_id: contractId, title: ctr.title, provider: ctr.provider, client: ctr.client, monthly_fee: `$${ctr.fee}`, autopay: "not_verified", sha256: hash.substring(0, 16) + "..." });
       signed++;
     } catch { /* dup */ }
   }
-  const totalMonthly = ALL_CONTRACTS.reduce((s, c) => s + c.fee, 0);
   return c.json({
     success: true,
     message: `${signed} inter-company contracts signed and logged`,
+    source: "static_contract_templates",
+    observed_at: new Date().toISOString(),
     summary: {
       total_contracts: signed,
-      total_monthly_revenue: `$${totalMonthly.toLocaleString()}`,
-      total_annual_revenue: `$${(totalMonthly * 12).toLocaleString()}`,
-      founder_royalty_monthly: `$${Math.round(totalMonthly * 0.3).toLocaleString()}`,
-      zakat_monthly: `$${Math.round(totalMonthly * 0.02).toLocaleString()}`,
-      all_autopay: true,
+      collected_revenue: null,
+      payment_verification: "not_performed",
+      autopay_status: "not_verified",
       all_shariah_compliant: true,
     },
     contracts: results,
@@ -221,24 +235,35 @@ contracts.get("/clients", async (c) => {
   const db = c.env.DB;
   await ensureTables(db);
   const { results } = await db.prepare("SELECT * FROM clients ORDER BY created_at DESC").all();
-  return c.json({ success: true, clients: results, total: results.length });
+  return c.json({
+    success: true,
+    source: "D1.clients",
+    observed_at: new Date().toISOString(),
+    payment_verification: "unverified",
+    note: "Stored records may include seeded data; autopay_status is not confirmation of processor setup or collection.",
+    clients: results,
+    total: results.length,
+  });
 });
 
 contracts.get("/revenue", async (c) => {
   const db = c.env.DB;
   await ensureTables(db);
   const { results } = await db.prepare(
-    `SELECT provider_company_id as provider, SUM(monthly_fee) as monthly_revenue, COUNT(*) as client_count FROM contracts WHERE status = 'active' GROUP BY provider_company_id ORDER BY monthly_revenue DESC`
+    `SELECT provider_company_id as provider, SUM(monthly_fee) as monthly_contract_amount, COUNT(*) as client_count FROM contracts WHERE status = 'active' GROUP BY provider_company_id ORDER BY monthly_contract_amount DESC`
   ).all();
-  const total = (results as Array<{ monthly_revenue: number }>).reduce((s, r) => s + (r.monthly_revenue || 0), 0);
+  const total = (results as Array<{ monthly_contract_amount: number }>).reduce((s, r) => s + (r.monthly_contract_amount || 0), 0);
   return c.json({
     success: true,
-    revenue_by_company: results,
-    totals: {
+    source: "D1.contracts",
+    observed_at: new Date().toISOString(),
+    payment_verification: "unverified",
+    collected_revenue: null,
+    note: "Stored fees may include seeded records. They do not establish invoicing, payment, or recognized revenue.",
+    contract_amounts_by_company: results,
+    contractual_amounts: {
       monthly: `$${total.toLocaleString()}`,
-      annual: `$${(total * 12).toLocaleString()}`,
-      founder_royalty: `$${Math.round(total * 0.3).toLocaleString()}/mo`,
-      zakat: `$${Math.round(total * 0.02).toLocaleString()}/mo`,
+      annualized: `$${(total * 12).toLocaleString()}`,
     },
   });
 });
@@ -502,22 +527,20 @@ contracts.post("/bootstrap", async (c) => {
     } catch { /* dup */ }
   }
 
-  const totalMonthly = ALL_CONTRACTS.reduce((s, c) => s + c.fee, 0);
-
   return c.json({
     success: true,
     message: "🏛️ FULL DARCLOUD ECOSYSTEM BOOTSTRAPPED — 101 companies, all contracts signed, all legal filed, all IP protected",
     bootstrapped_by: "DarLaw AI™",
     owner: "Omar Mohammad Abunadi",
+    source: "static_ecosystem_templates",
+    observed_at: new Date().toISOString(),
     results: {
       companies_registered: companiesSeeded,
       contracts_signed: contractsSigned,
       legal_filings: legalFiled,
       ip_protections: ipProtected,
-      total_monthly_revenue: `$${totalMonthly.toLocaleString()}`,
-      total_annual_revenue: `$${(totalMonthly * 12).toLocaleString()}`,
-      founder_royalty_monthly: `$${Math.round(totalMonthly * 0.3).toLocaleString()}/mo`,
-      zakat_monthly: `$${Math.round(totalMonthly * 0.02).toLocaleString()}/mo`,
+      collected_revenue: null,
+      payment_verification: "not_performed",
     },
     execution_ms: Date.now() - start,
   });
