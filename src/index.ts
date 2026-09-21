@@ -9,7 +9,8 @@ import { multipassRouter } from "./endpoints/multipass/router";
 import { telecomRouter } from "./endpoints/telecom/router";
 import { wifiRouter } from "./endpoints/wifi/router";
 import { ispRouter } from "./endpoints/isp/router";
-import { auth, requireAuth } from "./endpoints/auth";
+import { auth, requireAuth, requireAdmin } from "./endpoints/auth";
+import { chainStatus } from "./endpoints/chainStatus";
 import { contracts } from "./endpoints/contracts";
 import { ContentfulStatusCode } from "hono/utils/http-status";
 import { SystemHealth } from "./endpoints/systemHealth";
@@ -33,6 +34,16 @@ const app = new Hono<{ Bindings: Env }>();
 
 // ── Subdomain routing — intercept *.darcloud.host/net before other routes ──
 app.use("*", async (c, next) => {
+  const url = new URL(c.req.url);
+  if (/^blockchain\.darcloud\.(host|net)$/.test(url.hostname) && url.pathname === "/health") {
+    return chainStatus(c.req.raw, c.env);
+  }
+  // Authoritative APIs must reach Hono authentication instead of landing-page
+  // catch-all handlers or recursive subdomain proxies.
+  if (url.pathname === "/api/chain/status" || /^\/api\/(auth|admin|revenue|contracts)(\/|$)/.test(url.pathname)) {
+    await next();
+    return;
+  }
   const response = await handleSubdomain(c.req.raw);
   if (response) return response;
   await next();
@@ -64,6 +75,13 @@ app.use("*", async (c, next) => {
 });
 
 // ── Root redirect → www landing page ──
+app.all("/api/chain/status", (c) => chainStatus(c.req.raw, c.env));
+
+app.use("/api/*", async (c, next) => {
+  await next();
+  if (/^\/api\/(admin|revenue|contracts)(\/|$)/.test(c.req.path)) c.header("Cache-Control", "no-store");
+});
+
 app.get("/", (c) => {
   return c.redirect("https://www.darcloud.host/", 302);
 });
@@ -314,8 +332,17 @@ app.post("/api/checkout/session", async (c) => {
 
 // ── Customer Portal (manage subscriptions) ──
 app.post("/api/stripe/portal", async (c) => {
+  c.header("Cache-Control", "no-store");
+  const authError = await requireAuth(c as never);
+  if (authError) return authError;
   try {
     const { customer_id } = await c.req.json();
+    const identity = (c as unknown as { get: (key: string) => { sub: number | string } }).get("user");
+    const owner = await c.env.DB.prepare("SELECT darpay_customer_id FROM users WHERE id = ?")
+      .bind(identity.sub).first<{ darpay_customer_id: string | null }>();
+    if (!owner?.darpay_customer_id || customer_id !== owner.darpay_customer_id) {
+      return c.json({ error: "Customer access denied" }, 403);
+    }
     const stripeKey = c.env.STRIPE_SECRET_KEY;
     if (!stripeKey || !customer_id) {
       return c.json({ error: "Missing customer or configuration" }, 400);
@@ -341,7 +368,7 @@ app.post("/api/stripe/portal", async (c) => {
 
 // ── Revenue Dashboard API (auth required) ──
 app.get("/api/revenue/dashboard", async (c) => {
-  const authError = await requireAuth(c as any);
+  const authError = await requireAdmin(c as never);
   if (authError) return authError;
   const db = c.env.DB;
   try {
@@ -353,6 +380,10 @@ app.get("/api/revenue/dashboard", async (c) => {
     const total = totalRow?.total || 0;
     return c.json({
       success: true,
+      source: "D1.revenue_ledger",
+      observed_at: new Date().toISOString(),
+      payment_verification: "ledger_status_only",
+      note: "Recorded ledger amounts have not been reconciled with current processor collections, refunds, fees, or balances.",
       revenue: {
         total_cents: total,
         total_display: `$${(total / 100).toFixed(2)}`,
@@ -376,7 +407,7 @@ app.get("/api/revenue/dashboard", async (c) => {
 });
 
 app.get("/api/revenue/treasury", async (c) => {
-  const authError = await requireAuth(c as any);
+  const authError = await requireAdmin(c as never);
   if (authError) return authError;
   const db = c.env.DB;
   try {
@@ -385,6 +416,10 @@ app.get("/api/revenue/treasury", async (c) => {
     const zakatDist = await db.prepare("SELECT * FROM zakat_distributions ORDER BY created_at DESC LIMIT 20").all();
     return c.json({
       success: true,
+      source: "D1.treasury_accounts,payout_history,zakat_distributions",
+      observed_at: new Date().toISOString(),
+      payment_verification: "ledger_status_only",
+      note: "Recorded allocations and payouts do not verify current bank or processor balances.",
       accounts: treasury.results,
       recent_payouts: recentPayouts.results,
       zakat_distributions: zakatDist.results,
@@ -468,7 +503,8 @@ const openapi = fromHono(app, {
       version: "6.0.0",
       description:
         "QuranChain™ production API powering the DarCloud infrastructure stack. " +
-        "All endpoints produce real-world results from live upstream services — nothing is mocked. " +
+        "Service availability is reported only where checks or observations are available. " +
+        "GET /api/chain/status exposes a bounded read-only projection of the bot's local SQLite ledger; this is not consensus verification. " +
         "Subsystems: 77 AI agents (66 fleet + 11 DarLaw legal AI) + 12 GPT-4o assistants (ai.darcloud.host), " +
         "FungiMesh dual-layer encrypted network (mesh.darcloud.host), " +
         "DarTelecom™ ISP (Open5GS 5G SA + 4G EPC, subscriber provisioning, SIM/eSIM, billing, mesh ISP relays), " +
@@ -478,7 +514,7 @@ const openapi = fromHono(app, {
         "Dashboard (/dashboard) and Admin panel (/admin) for real-time system management. " +
         "Payments: DarPay™ halal checkout at /api/checkout/session (Stripe backend). " +
         "Rate limiting: 5 attempts/min per IP on auth endpoints. " +
-        "Inter-Company Contracts: 101 companies, 175 contracts ($402K+/mo), monthly autopay on all. " +
+        "Inter-company contract amounts are proposed obligations, not verified collections. Administrative and financial APIs require configured administrator access. " +
         "DarLaw AI™: 11 legal AI agents handling corporate filings, IP protection, " +
         "75 trademarks, 27 patents, 8 copyrights, 6 trade secrets, international IP across 153 countries. " +
         "Islamic Finance: Takaful, Sukuk, Murabaha, Musharakah, Mudarabah, Ijarah, Istisna, Wakala, Zakat, Waqf. " +

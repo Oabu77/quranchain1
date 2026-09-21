@@ -175,7 +175,7 @@ describe("Auth API Integration Tests", () => {
 
 	// ── Admin Stats ──
 	describe("GET /api/admin/stats", () => {
-		it("should return stats with valid token", async () => {
+		it("should deny admin stats to an ordinary signed-in user", async () => {
 			const email = `admin_${Date.now()}@darcloud.host`;
 			const signupRes = await signup({ email });
 			const { token } = await signupRes.json<{ token: string }>();
@@ -183,20 +183,9 @@ describe("Auth API Integration Tests", () => {
 			const res = await SELF.fetch("http://local.test/api/admin/stats", {
 				headers: { Authorization: `Bearer ${token}` },
 			});
-			const body = await res.json<{
-				success: boolean;
-				stats: {
-					users: number;
-					contact_submissions: number;
-					hwc_applications: number;
-				};
-			}>();
-
-			expect(res.status).toBe(200);
-			expect(body.success).toBe(true);
-			expect(body.stats.users).toBeGreaterThanOrEqual(1);
-			expect(typeof body.stats.contact_submissions).toBe("number");
-			expect(typeof body.stats.hwc_applications).toBe("number");
+			expect(res.status).toBe(403);
+			const body = await res.json<{ error: string }>();
+			expect(body.error).toContain("Administrator");
 		});
 
 		it("should reject admin stats without auth", async () => {

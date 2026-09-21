@@ -135,6 +135,32 @@ async function requireAuth(c: { req: { header: (name: string) => string | undefi
   return null; // Continue
 }
 
+// Administrative access is assigned by the operator to existing database IDs.
+// A public signup, submitted email address, or JWT role label cannot grant it.
+async function requireAdmin(c: Parameters<typeof requireAuth>[0] & {
+  env: { JWT_SECRET?: string; ADMIN_USER_IDS?: string; DB: D1Database };
+  get: (key: string) => unknown;
+  header: (name: string, value: string) => void;
+}): Promise<Response | null> {
+  c.header("Cache-Control", "no-store");
+  const authError = await requireAuth(c);
+  if (authError) return authError;
+
+  const payload = c.get("user") as Record<string, unknown>;
+  const subject = String(payload.sub ?? "");
+  const allowedIds = new Set((c.env.ADMIN_USER_IDS ?? "").split(",").map((id) => id.trim()).filter((id) => /^[1-9]\d*$/.test(id)));
+  if (!/^[1-9]\d*$/.test(subject) || !Number.isSafeInteger(Number(subject)) ||
+      (payload.userId !== undefined && String(payload.userId) !== subject) ||
+      !allowedIds.has(subject)) {
+    return c.json({ error: "Administrator access required" }, 403);
+  }
+
+  // Deleted users must not retain administrative access for the JWT lifetime.
+  const user = await c.env.DB.prepare("SELECT id FROM users WHERE id = ?").bind(Number(subject)).first<{ id: number }>();
+  if (!user) return c.json({ error: "Administrator access required" }, 403);
+  return null;
+}
+
 // Auto-migrate: ensure tables exist on first request
 async function ensureTables(db: D1Database) {
   await db.batch([
@@ -558,18 +584,8 @@ auth.get("/auth/me", async (c) => {
 // GET /api/admin/stats — Admin dashboard stats (protected)
 auth.get("/admin/stats", async (c) => {
   const start = Date.now();
-  const secret = getJwtSecret(c.env);
-  let token: string | null = null;
-  const authHeader = c.req.header("Authorization");
-  if (authHeader?.startsWith("Bearer ")) {
-    token = authHeader.substring(7);
-  }
-  if (!token) {
-    token = getCookieToken(c.req.header("Cookie"));
-  }
-  if (!token) return c.json({ error: "Authorization required" }, 401);
-  const payload = await verifyJWT(token, secret);
-  if (!payload) return c.json({ error: "Invalid or expired token" }, 401);
+  const authError = await requireAdmin(c as never);
+  if (authError) return authError;
 
   const db = c.env.DB;
   await ensureTables(db);
@@ -662,4 +678,4 @@ auth.get("/lookup", async (c) => {
   return c.json({ user: { id: user.id, name: user.name, email: user.email, plan: user.plan } });
 });
 
-export { auth, requireAuth, verifyJWT, getJwtSecret };
+export { auth, requireAuth, requireAdmin, verifyJWT, getJwtSecret };

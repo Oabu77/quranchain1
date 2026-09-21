@@ -28,7 +28,7 @@ jobs:
         run: npx tsc --noEmit
 
       - name: Run required tests
-        run: npx vitest run --config tests/vitest.config.mts
+        run: npm test
 
       - name: Apply D1 Migrations
         run: echo "y" | npx wrangler d1 migrations apply DB --remote

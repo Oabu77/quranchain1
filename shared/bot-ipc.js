@@ -160,6 +160,12 @@ function startIpcServer(botName, handlers = {}) {
           await new Promise(resolve => { req.on("data", c => body += c); req.on("end", resolve); });
         }
         const result = await handlers[url.pathname](req, body ? JSON.parse(body) : {}, url.searchParams);
+        if (typeof Response !== "undefined" && result instanceof Response) {
+          res.statusCode = result.status;
+          result.headers.forEach((value, name) => res.setHeader(name, value));
+          res.end(await result.text());
+          return;
+        }
         res.end(JSON.stringify(result || { ok: true }));
       } catch (e) {
         res.statusCode = 500;
