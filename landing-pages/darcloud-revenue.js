@@ -2,7 +2,7 @@
 var CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-DarPay-Signature"
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-DarPay-Signature, Stripe-Signature"
 };
 var FOUNDER_ROYALTY_RATE = 0.3;
 var REVENUE_DISTRIBUTION = {
@@ -12,6 +12,49 @@ var REVENUE_DISTRIBUTION = {
   ecosystem: 0.18,
   zakat: 0.02
 };
+var STRIPE_SIGNATURE_TOLERANCE_SECONDS = 300;
+
+function constantTimeEqual(a, b) {
+  if (a.length !== b.length)
+    return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++)
+    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+async function verifyStripeSignature(request, webhookSecret, rawBody) {
+  if (!webhookSecret)
+    return false;
+  const signatureHeader = request.headers.get("Stripe-Signature") || "";
+  const parts = signatureHeader.split(",").map((part) => part.trim());
+  const timestampPart = parts.find((part) => part.startsWith("t="));
+  const v1Signatures = parts.filter((part) => part.startsWith("v1=")).map((part) => part.slice(3).toLowerCase());
+  if (!timestampPart || v1Signatures.length === 0)
+    return false;
+  const timestamp = Number(timestampPart.slice(2));
+  if (!Number.isFinite(timestamp))
+    return false;
+  const age = Math.abs(Math.floor(Date.now() / 1e3) - timestamp);
+  if (age > STRIPE_SIGNATURE_TOLERANCE_SECONDS)
+    return false;
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(webhookSecret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  const signed = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    encoder.encode(`${timestamp}.${rawBody}`)
+  );
+  const expected = Array.from(new Uint8Array(signed)).map((b) => b.toString(16).padStart(2, "0")).join("");
+  return v1Signatures.some((candidate) => constantTimeEqual(candidate, expected));
+}
+
 var src_default = {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -70,14 +113,24 @@ var src_default = {
       });
     }
     if (url.pathname === "/api/webhooks/stripe" && request.method === "POST") {
+      const rawBody = await request.text();
+      const webhookSecret = env?.STRIPE_WEBHOOK_SECRET || "";
+      const signatureValid = await verifyStripeSignature(request, webhookSecret, rawBody);
+      if (!signatureValid) {
+        return json({ error: "Invalid webhook signature" }, 400);
+      }
       try {
-        const body = await request.json();
+        const body = JSON.parse(rawBody);
         const eventType = body.type || "unknown";
+        const stripeSignature = request.headers.get("Stripe-Signature") || "";
         ctx.waitUntil(
           fetch("https://revenue.darcloud.host/webhooks/stripe", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(body)
+            headers: {
+              "Content-Type": "application/json",
+              "Stripe-Signature": stripeSignature
+            },
+            body: rawBody
           }).catch(() => {
           })
         );
