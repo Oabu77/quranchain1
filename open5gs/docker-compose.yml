@@ -27,7 +27,7 @@ services:
       - mongodb-data:/data/db
       - mongodb-config:/data/configdb
     ports:
-      - "27017:27017"
+      - "127.0.0.1:27017:27017"
     healthcheck:
       test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
       interval: 10s
