@@ -1,0 +1,31 @@
+name: Open5GS Control Plane Security
+
+on:
+  pull_request:
+    paths:
+      - "open5gs/**"
+      - ".github/workflows/open5gs-control-plane-security.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  containment:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate deploy script syntax
+        run: bash -n open5gs/deploy.sh
+      - name: Require fail-closed management-port gate
+        run: |
+          grep -q 'DARTELECOM_ALLOW_UNSAFE_PORT_PUBLISHING' open5gs/deploy.sh
+          grep -q 'refusing to deploy management/database services with wide host bindings' open5gs/deploy.sh
+      - name: Prevent deployment script from printing static credentials
+        run: |
+          ! grep -q 'WebUI Default Login' open5gs/deploy.sh
+          ! grep -q 'Test subscriber provisioned' open5gs/deploy.sh
+      - name: Confirm known unsafe Compose bindings remain visible to the gate
+        run: |
+          grep -Eq '^[[:space:]]*-[[:space:]]*"27017:27017"[[:space:]]*$' open5gs/docker-compose.yml
+          grep -Eq '^[[:space:]]*-[[:space:]]*"9999:9999"[[:space:]]*$' open5gs/docker-compose.yml
+          grep -Eq '^[[:space:]]*-[[:space:]]*"3000:3000"[[:space:]]*$' open5gs/docker-compose.yml

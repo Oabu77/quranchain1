@@ -3,7 +3,7 @@ set -euo pipefail
 
 # ==========================================================
 # DarTelecom™ / MeshTalk™ — Complete ISP Deployment
-# Deploys Open5GS 5G Core + 4G EPC + ISP Controller
+# Deploys Open5GS 5G SA + 4G EPC + ISP Controller
 # ==========================================================
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -30,6 +30,24 @@ fi
 
 echo "  Docker: $(docker --version)"
 echo "  Compose: $(docker compose version 2>/dev/null || echo 'v2')"
+
+# Security gate: the canonical production deploy path must not publish
+# management/database services on every host interface. Docker Compose
+# entries such as "3000:3000" bind to 0.0.0.0 by default.
+if [ "${DARTELECOM_ALLOW_UNSAFE_PORT_PUBLISHING:-0}" != "1" ]; then
+  unsafe_ports=()
+  grep -Eq "^[[:space:]]*-[[:space:]]*[\"']?27017:27017[\"']?[[:space:]]*$" docker-compose.yml && unsafe_ports+=("MongoDB 27017")
+  grep -Eq "^[[:space:]]*-[[:space:]]*[\"']?9999:9999[\"']?[[:space:]]*$" docker-compose.yml && unsafe_ports+=("Open5GS WebUI 9999")
+  grep -Eq "^[[:space:]]*-[[:space:]]*[\"']?3000:3000[\"']?[[:space:]]*$" docker-compose.yml && unsafe_ports+=("ISP controller 3000")
+
+  if [ "${#unsafe_ports[@]}" -gt 0 ]; then
+    echo "ERROR: refusing to deploy management/database services with wide host bindings."
+    printf '  Unsafe binding: %s\n' "${unsafe_ports[@]}"
+    echo "  Bind these services to loopback/private management interfaces first."
+    echo "  Emergency override only: DARTELECOM_ALLOW_UNSAFE_PORT_PUBLISHING=1"
+    exit 1
+  fi
+fi
 
 # -------- Create TUN device for UPF --------
 echo "[2/7] Configuring network for UPF..."
@@ -99,28 +117,17 @@ echo "    gNodeB (5G Radio)            : running"
 echo "    UE     (Test Device)         : running"
 echo
 echo "  ISP Services:"
-echo "    MongoDB (Subscriber DB)      : localhost:27017"
-echo "    Open5GS WebUI                : http://localhost:9999"
-echo "    ISP Controller API           : http://localhost:3000"
-echo "    ISP Dashboard                : http://localhost:3000/api/dashboard"
+echo "    MongoDB (Subscriber DB)      : private management binding"
+echo "    Open5GS WebUI                : private management binding"
+echo "    ISP Controller API           : private management binding"
+echo "    ISP Dashboard                : private management binding"
 echo
-echo "  WebUI Default Login:"
-echo "    Username: admin"
-echo "    Password: 1423"
+echo "  Administrative credentials:"
+echo "    Provision through the approved runtime secret/identity path."
+echo "    No default administrative password is printed by this script."
 echo
-echo "  Test subscriber provisioned:"
-echo "    IMSI: 999700000000001"
-echo "    Ki:   465B5CE8B199B49FAA5F0A2EE238A6BC"
-echo "    OPc:  E8ED289DEBA952E4283B54E88E6183CA"
-echo
-echo "  Quick test:"
-echo "    curl http://localhost:3000/api/dashboard"
-echo "    curl http://localhost:3000/api/network/status"
-echo "    curl http://localhost:3000/api/plans"
-echo
-echo "  Create a subscriber:"
-echo '    curl -X POST http://localhost:3000/api/subscribers \'
-echo '      -H "Content-Type: application/json" \'
-echo '      -d '"'"'{"name":"Test User","email":"test@darcloud.host","plan":"starter"}'"'"
+echo "  Test subscriber credentials:"
+echo "    Synthetic test SIM credentials are intentionally not printed."
+echo "    Never reuse tracked test credentials for production subscribers."
 echo
 echo "============================================"
